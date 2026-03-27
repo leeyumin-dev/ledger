@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { Stack, router } from 'expo-router';
 import { Session } from '@supabase/supabase-js';
 import { useFonts, GeistMono_400Regular, GeistMono_500Medium } from '@expo-google-fonts/geist-mono';
@@ -9,8 +9,9 @@ import { supabase } from '../src/lib/supabase';
 SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
-  const [session, setSession] = useState<Session | null>(null);
+  const [session, setSession]       = useState<Session | null>(null);
   const [initialized, setInitialized] = useState(false);
+  const [isNewUser, setIsNewUser]   = useState(false);
 
   const [fontsLoaded] = useFonts({
     GeistMono_400Regular,
@@ -24,8 +25,18 @@ export default function RootLayout() {
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
+      async (_event, session) => {
         setSession(session);
+
+        if (session && _event === 'SIGNED_IN') {
+          const { data } = await supabase
+            .from('user_settings')
+            .select('id')
+            .eq('user_id', session.user.id)
+            .single();
+
+          setIsNewUser(!data);
+        }
       }
     );
 
@@ -36,7 +47,7 @@ export default function RootLayout() {
     const handleDeepLink = async (url: string) => {
       if (url.includes('access_token')) {
         const params = new URLSearchParams(url.split('#')[1]);
-        const accessToken = params.get('access_token');
+        const accessToken  = params.get('access_token');
         const refreshToken = params.get('refresh_token');
 
         if (accessToken && refreshToken) {
@@ -48,14 +59,9 @@ export default function RootLayout() {
       }
     };
 
-    Linking.getInitialURL().then((url) => {
-      if (url) handleDeepLink(url);
-    });
+    Linking.getInitialURL().then(url => { if (url) handleDeepLink(url); });
 
-    const subscription = Linking.addEventListener('url', ({ url }) => {
-      handleDeepLink(url);
-    });
-
+    const subscription = Linking.addEventListener('url', ({ url }) => handleDeepLink(url));
     return () => subscription.remove();
   }, []);
 
@@ -64,11 +70,15 @@ export default function RootLayout() {
     SplashScreen.hideAsync();
 
     if (session) {
-      router.replace('/(tabs)');
+      if (isNewUser) {
+        router.replace('/onboarding');
+      } else {
+        router.replace('/(tabs)');
+      }
     } else {
       router.replace('/login');
     }
-  }, [fontsLoaded, initialized, session]);
+  }, [fontsLoaded, initialized, session, isNewUser]);
 
   if (!fontsLoaded || !initialized) return null;
 
@@ -76,6 +86,7 @@ export default function RootLayout() {
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="(tabs)" />
       <Stack.Screen name="login" />
+      <Stack.Screen name="onboarding" />
     </Stack>
   );
 }

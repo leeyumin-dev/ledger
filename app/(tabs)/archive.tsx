@@ -1,33 +1,113 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { useState, useCallback } from 'react';
+import {
+  View, Text, StyleSheet,
+  ScrollView, TouchableOpacity
+} from 'react-native';
+import { useFocusEffect } from 'expo-router';
+import { supabase } from '../../src/lib/supabase';
 
-// ── 임시 더미 데이터 ──────────────────────────
-const WEEKLY_DATA = [
-  { id: '1', period: '3월 3주차', detail: '유튜브 18h · 인스타 7h', value: '-29h 37m', delta: '▲ 전주比 +4h', isProfit: false },
-  { id: '2', period: '3월 2주차', detail: '유튜브 14h · 인스타 5h', value: '-25h 11m', delta: '→ 전주比 持',  isProfit: false },
-  { id: '3', period: '3월 1주차', detail: '유튜브 9h · 독서 4h',   value: '+8h 22m',  delta: '▼ 전주比 -6h', isProfit: true  },
-  { id: '4', period: '2월 4주차', detail: '유튜브 11h · 게임 6h',  value: '-18h 04m', delta: '→ 전주比 持',  isProfit: false },
-  { id: '5', period: '2월 3주차', detail: '유튜브 13h · 게임 4h',  value: '-22h 50m', delta: '▲ 전주比 +2h', isProfit: false },
-  { id: '6', period: '2월 2주차', detail: '유튜브 8h · 독서 5h',   value: '+3h 12m',  delta: '▼ 전주比 -8h', isProfit: true  },
-];
+type WeeklyRecord = {
+  id: string;
+  period: string;
+  detail: string;
+  value: string;
+  delta: string;
+  isProfit: boolean;
+};
 
-// ── 히트맵 데이터 (true=흑자, false=적자, null=데이터없음) ──
-const HEATMAP: (boolean | null)[] = [
-  false, false, false, true,
-  null,  false, true,  true,
-  true,  null,  false, false,
-  false, true,  true,  true,
-  true,  true,  true,  true,
-  true,  true,  true,  true,
-  true,  true,
-];
+type HeatmapCell = boolean | null;
 
 export default function ArchiveScreen() {
+  const [records, setRecords]   = useState<WeeklyRecord[]>([]);
+  const [heatmap, setHeatmap]   = useState<HeatmapCell[]>([]);
+  const [loading, setLoading]   = useState(false);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadData();
+    }, [])
+  );
+
+  async function loadData() {
+    setLoading(true);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const { data } = await supabase
+      .from('app_usage')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('date', { ascending: false });
+
+    if (data && data.length > 0) {
+      const processed = processData(data);
+      setRecords(processed.records);
+      setHeatmap(processed.heatmap);
+    }
+
+    setLoading(false);
+  }
+
+  function processData(data: any[]) {
+    // 날짜별로 그룹화
+    const byDate: Record<string, any[]> = {};
+    data.forEach(item => {
+      if (!byDate[item.date]) byDate[item.date] = [];
+      byDate[item.date].push(item);
+    });
+
+    // 주차별로 그룹화
+    const byWeek: Record<string, any[]> = {};
+    Object.entries(byDate).forEach(([date, items]) => {
+      const week = getWeekLabel(date);
+      if (!byWeek[week]) byWeek[week] = [];
+      byWeek[week].push(...items);
+    });
+
+    // 레코드 생성
+    const weeks = Object.keys(byWeek).sort().reverse();
+    const records: WeeklyRecord[] = weeks.map((week, i) => {
+      const items = byWeek[week];
+      const totalMinutes = items
+        .filter(i => i.category === '소비')
+        .reduce((sum, i) => sum + i.duration_minutes, 0);
+      const topApps = [...new Set(items.map(i => i.app_name))].slice(0, 2);
+      const isProfit = totalMinutes < 60 * 4;
+      const hours = Math.floor(totalMinutes / 60);
+      const mins = totalMinutes % 60;
+
+      return {
+        id: week,
+        period: week,
+        detail: topApps.join(' · '),
+        value: `${isProfit ? '+' : '-'}${hours}h ${mins}m`,
+        delta: i === 0 ? '이번 주' : '',
+        isProfit,
+      };
+    });
+
+    // 히트맵 생성 (최근 26주)
+    const heatmap: HeatmapCell[] = Array(26).fill(null).map((_, i) => {
+      const weekIdx = weeks.length - 1 - i;
+      if (weekIdx < 0) return null;
+      return records[weekIdx]?.isProfit ?? null;
+    }).reverse();
+
+    return { records, heatmap };
+  }
+
+  function getWeekLabel(dateStr: string) {
+    const date = new Date(dateStr);
+    const month = date.getMonth() + 1;
+    const weekNum = Math.ceil(date.getDate() / 7);
+    return `${month}월 ${weekNum}주차`;
+  }
+
   return (
     <ScrollView style={styles.container}>
 
-      {/* 헤더 */}
       <View style={styles.header}>
-        <Text style={styles.headerSub}>2025. 9 — 2026. 3</Text>
+        <Text style={styles.headerSub}>기록 보관함</Text>
         <Text style={styles.headerTitle}>보관함</Text>
       </View>
 
@@ -35,7 +115,7 @@ export default function ArchiveScreen() {
       <View style={styles.heatmapBox}>
         <Text style={styles.heatmapLabel}>이번 해 흑자 · 적자</Text>
         <View style={styles.heatmapGrid}>
-          {HEATMAP.map((val, i) => (
+          {heatmap.map((val, i) => (
             <View
               key={i}
               style={[
@@ -57,26 +137,32 @@ export default function ArchiveScreen() {
         </View>
       </View>
 
-      {/* 구분선 */}
       <View style={styles.divider} />
 
-      {/* 주간 기록 목록 */}
-      {WEEKLY_DATA.map((item) => (
-        <TouchableOpacity key={item.id} style={styles.item}>
-          <View>
-            <Text style={styles.itemPeriod}>{item.period}</Text>
-            <Text style={styles.itemDetail}>{item.detail}</Text>
-          </View>
-          <View style={styles.itemRight}>
-            <Text style={[styles.itemValue, item.isProfit ? styles.profitText : styles.lossText]}>
-              {item.value}
-            </Text>
-            <Text style={[styles.itemDelta, item.isProfit ? styles.profitText : styles.lossText]}>
-              {item.delta}
-            </Text>
-          </View>
-        </TouchableOpacity>
-      ))}
+      {/* 기록 없을 때 */}
+      {records.length === 0 ? (
+        <View style={styles.emptyBox}>
+          <Text style={styles.emptyText}>아직 기록이 없어요</Text>
+          <Text style={styles.emptySub}>오늘 화면에서 앱 사용 시간을 추가해봐요</Text>
+        </View>
+      ) : (
+        records.map((item) => (
+          <TouchableOpacity key={item.id} style={styles.item}>
+            <View>
+              <Text style={styles.itemPeriod}>{item.period}</Text>
+              <Text style={styles.itemDetail}>{item.detail}</Text>
+            </View>
+            <View style={styles.itemRight}>
+              <Text style={[styles.itemValue, item.isProfit ? styles.profitText : styles.lossText]}>
+                {item.value}
+              </Text>
+              <Text style={[styles.itemDelta, item.isProfit ? styles.profitText : styles.lossText]}>
+                {item.delta}
+              </Text>
+            </View>
+          </TouchableOpacity>
+        ))
+      )}
 
       <View style={{ height: 40 }} />
 
@@ -89,6 +175,17 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#0f0f0f',
     paddingHorizontal: 24,
+  },
+  loadingContainer: {
+    flex: 1,
+    backgroundColor: '#0f0f0f',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    fontFamily: 'GeistMono_400Regular',
+    fontSize: 13,
+    color: '#5a5754',
   },
   header: {
     paddingTop: 72,
@@ -154,6 +251,22 @@ const styles = StyleSheet.create({
     height: 0.5,
     backgroundColor: '#2a2826',
     marginBottom: 8,
+  },
+  emptyBox: {
+    paddingVertical: 48,
+    alignItems: 'center',
+  },
+  emptyText: {
+    fontFamily: 'GeistMono_500Medium',
+    fontSize: 14,
+    color: '#5a5754',
+    marginBottom: 8,
+  },
+  emptySub: {
+    fontFamily: 'GeistMono_400Regular',
+    fontSize: 12,
+    color: '#3a3836',
+    textAlign: 'center',
   },
   item: {
     flexDirection: 'row',
