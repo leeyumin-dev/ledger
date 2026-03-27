@@ -14,12 +14,41 @@ type AppUsage = {
     category: string;
 };
 
+type BudgetWarning = {
+    app_name: string;
+    ratio: number;
+    used_minutes: number;
+    budget_minutes: number;
+};
+
+function getWarningColor(ratio: number) {
+    if (ratio >= 1.2) return '#ff4444';
+    if (ratio >= 1.0) return '#f87171';
+    if (ratio >= 0.9) return '#fb923c';
+    return '#fbbf24';
+}
+
+function getWarningBg(ratio: number) {
+    if (ratio >= 1.0) return 'rgba(248,113,113,0.08)';
+    return 'rgba(251,191,36,0.06)';
+}
+
+function getWarningBorder(ratio: number) {
+    if (ratio >= 1.0) return 'rgba(248,113,113,0.25)';
+    return 'rgba(251,191,36,0.2)';
+}
+
+function fmt(m: number) {
+    return `${Math.floor(m / 60)}h ${m % 60}m`;
+}
+
 export default function TodayScreen() {
     const [sleepHours, setSleepHours] = useState(7.5);
     const [workHours, setWorkHours] = useState(8.0);
     const [usageList, setUsageList] = useState<AppUsage[]>([]);
-    const [loading, setLoading] = useState(false);
     const [modalVisible, setModalVisible] = useState(false);
+    const [budgetWarnings, setBudgetWarnings] = useState<BudgetWarning[]>([]);
+    const [warningExpanded, setWarningExpanded] = useState(false);
 
     const [newAppName, setNewAppName] = useState('');
     const [newMinutes, setNewMinutes] = useState('');
@@ -27,7 +56,6 @@ export default function TodayScreen() {
     const [categoryList, setCategoryList] = useState<{ app_name: string, category: string }[]>([]);
 
     const today = new Date().toISOString().split('T')[0];
-
     const todayLabel = new Date().toLocaleDateString('ko-KR', {
         year: 'numeric', month: 'long', day: 'numeric', weekday: 'long'
     });
@@ -38,36 +66,43 @@ export default function TodayScreen() {
         }, [])
     );
 
-    async function loadData() {
+    async function loadData(latestApp: string = '') {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return;
 
         const [settingsRes, usageRes, categoryRes] = await Promise.all([
             supabase.from('user_settings').select('sleep_hours, work_hours').eq('user_id', user.id).single(),
             supabase.from('app_usage').select('*').eq('user_id', user.id).eq('date', today),
-            supabase.from('app_categories').select('app_name, category').eq('user_id', user.id).order('app_name'),
+            supabase.from('app_categories').select('app_name, category, budget_minutes').eq('user_id', user.id),
         ]);
 
         if (settingsRes.data) {
             setSleepHours(settingsRes.data.sleep_hours);
             setWorkHours(settingsRes.data.work_hours);
         }
-        if (usageRes.data) setUsageList(usageRes.data);
-        if (categoryRes.data) setCategoryList(categoryRes.data);
-    }
 
-    async function fetchCategory(appName: string) {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return;
+        const usageData = usageRes.data ?? [];
+        const categoryData = categoryRes.data ?? [];
 
-        const { data } = await supabase
-            .from('app_categories')
-            .select('category')
-            .eq('user_id', user.id)
-            .eq('app_name', appName)
-            .single();
+        setUsageList(usageData);
+        setCategoryList(categoryData.map(c => ({ app_name: c.app_name, category: c.category })));
 
-        if (data) setNewCategory(data.category);
+        const warnings = categoryData
+            .filter(c => c.budget_minutes > 0)
+            .map(c => {
+                const usage = usageData.find(u => u.app_name === c.app_name);
+                const used = usage ? usage.duration_minutes : 0;
+                const ratio = used / c.budget_minutes;
+                return { app_name: c.app_name, ratio, used_minutes: used, budget_minutes: c.budget_minutes };
+            })
+            .filter(w => w.ratio >= 0.8)
+            .sort((a, b) => {
+                if (a.app_name === latestApp) return -1;
+                if (b.app_name === latestApp) return 1;
+                return b.ratio - a.ratio;
+            });
+
+        setBudgetWarnings(warnings);
     }
 
     async function addUsage() {
@@ -80,30 +115,28 @@ export default function TodayScreen() {
         if (!user) return;
 
         const addMinutes = parseInt(newMinutes);
+        const appName = newAppName;
 
-        // 기존 데이터 조회
         const { data: existing } = await supabase
             .from('app_usage')
             .select('id, duration_minutes')
             .eq('user_id', user.id)
             .eq('date', today)
-            .eq('app_name', newAppName)
+            .eq('app_name', appName)
             .single();
 
         if (existing) {
-            // 있으면 누적해서 업데이트
             await supabase
                 .from('app_usage')
                 .update({ duration_minutes: existing.duration_minutes + addMinutes })
                 .eq('id', existing.id);
         } else {
-            // 없으면 새로 insert
             await supabase
                 .from('app_usage')
                 .insert({
                     user_id: user.id,
                     date: today,
-                    app_name: newAppName,
+                    app_name: appName,
                     duration_minutes: addMinutes,
                     category: newCategory,
                 });
@@ -113,7 +146,8 @@ export default function TodayScreen() {
         setNewMinutes('');
         setNewCategory('소비');
         setModalVisible(false);
-        loadData();
+
+        await loadData(appName);
     }
 
     async function deleteUsage(id: string) {
@@ -137,11 +171,11 @@ export default function TodayScreen() {
     const disposable = 24 - sleepHours - workHours;
     const lossMinutes = usageList.filter(u => u.category === '소비').reduce((s, u) => s + u.duration_minutes, 0);
     const investMinutes = usageList.filter(u => u.category === '투자').reduce((s, u) => s + u.duration_minutes, 0);
+    const essentialMinutes = usageList.filter(u => u.category === '필수').reduce((s, u) => s + u.duration_minutes, 0);
     const lossHours = Math.floor(lossMinutes / 60);
     const lossMins = lossMinutes % 60;
     const investHours = Math.floor(investMinutes / 60);
     const investMins = investMinutes % 60;
-    const essentialMinutes = usageList.filter(u => u.category === '필수').reduce((s, u) => s + u.duration_minutes, 0);
     const netMinutes = Math.round(disposable * 60) - lossMinutes - essentialMinutes + investMinutes;
     const netHours = Math.abs(Math.floor(netMinutes / 60));
     const netMins = Math.abs(netMinutes % 60);
@@ -156,6 +190,68 @@ export default function TodayScreen() {
                     <Text style={styles.headerTitle}>손익계산서</Text>
                 </View>
 
+                {/* 예산 경고 배너 */}
+                {budgetWarnings.length > 0 && (() => {
+                    const first = budgetWarnings[0];
+                    const rest = budgetWarnings.slice(1);
+                    const color = getWarningColor(first.ratio);
+                    const pct = Math.round(first.ratio * 100);
+                    const barWidth = Math.min(first.ratio * 100, 100);
+
+                    return (
+                        <View style={[
+                            styles.warnBox,
+                            { backgroundColor: getWarningBg(first.ratio), borderColor: getWarningBorder(first.ratio) }
+                        ]}>
+                            <View style={styles.warnMain}>
+                                <View style={[styles.warnDot, { backgroundColor: color }]} />
+                                <Text style={[styles.warnName, { color }]}>
+                                    {first.app_name} {first.ratio >= 1 ? '예산 초과' : `${pct}% 소진`}
+                                </Text>
+                                <Text style={[styles.warnPct, { color }]}>
+                                    {fmt(first.used_minutes)} / {fmt(first.budget_minutes)} · {pct}%
+                                </Text>
+                            </View>
+
+                            <View style={styles.warnBarBg}>
+                                <View style={[styles.warnBar, { width: `${barWidth}%` as any, backgroundColor: color }]} />
+                            </View>
+
+                            {rest.length > 0 && (
+                                <>
+                                    <TouchableOpacity
+                                        style={styles.warnToggle}
+                                        onPress={() => setWarningExpanded(prev => !prev)}
+                                    >
+                                        <Text style={[styles.warnToggleText, { color: `${color}99` }]}>
+                                            {warningExpanded ? `외 ${rest.length}개 접기` : `외 ${rest.length}개 더 보기`}
+                                        </Text>
+                                        <Text style={[styles.warnArrow, { color: `${color}99` }]}>
+                                            {warningExpanded ? '▲' : '▼'}
+                                        </Text>
+                                    </TouchableOpacity>
+
+                                    {warningExpanded && rest.map(w => {
+                                        const c = getWarningColor(w.ratio);
+                                        const p = Math.round(w.ratio * 100);
+                                        return (
+                                            <View key={w.app_name} style={styles.warnExtraItem}>
+                                                <View style={[styles.warnDot, { backgroundColor: c }]} />
+                                                <Text style={[styles.warnExtraName, { color: c }]}>
+                                                    {w.app_name} {w.ratio >= 1 ? '초과' : `${p}% 소진`}
+                                                </Text>
+                                                <Text style={[styles.warnExtraPct, { color: c }]}>
+                                                    {fmt(w.used_minutes)} / {fmt(w.budget_minutes)} · {p}%
+                                                </Text>
+                                            </View>
+                                        );
+                                    })}
+                                </>
+                            )}
+                        </View>
+                    );
+                })()}
+
                 <View style={styles.thickDivider} />
 
                 {/* 수입 */}
@@ -169,17 +265,8 @@ export default function TodayScreen() {
                 {/* 지출 */}
                 <Text style={[styles.sectionLabel, { marginTop: 16 }]}>시간 지출</Text>
                 {usageList.filter(u => u.category === '소비').map(u => (
-                    <TouchableOpacity
-                        key={u.id}
-                        onLongPress={() => deleteUsage(u.id)}
-                        delayLongPress={500}
-                        activeOpacity={0.7}
-                    >
-                        <Row
-                            label={u.app_name}
-                            value={`${Math.floor(u.duration_minutes / 60)}h ${u.duration_minutes % 60}m`}
-                            indent loss
-                        />
+                    <TouchableOpacity key={u.id} onLongPress={() => deleteUsage(u.id)} delayLongPress={500} activeOpacity={0.7}>
+                        <Row label={u.app_name} value={`${Math.floor(u.duration_minutes / 60)}h ${u.duration_minutes % 60}m`} indent loss />
                     </TouchableOpacity>
                 ))}
                 {usageList.filter(u => u.category === '소비').length === 0 && (
@@ -189,37 +276,19 @@ export default function TodayScreen() {
                 {/* 투자 */}
                 <Text style={[styles.sectionLabel, { marginTop: 16 }]}>시간 투자</Text>
                 {usageList.filter(u => u.category === '투자').map(u => (
-                    <TouchableOpacity
-                        key={u.id}
-                        onLongPress={() => deleteUsage(u.id)}
-                        delayLongPress={500}
-                        activeOpacity={0.7}
-                    >
-                        <Row
-                            label={u.app_name}
-                            value={`${Math.floor(u.duration_minutes / 60)}h ${u.duration_minutes % 60}m`}
-                            indent profit
-                        />
+                    <TouchableOpacity key={u.id} onLongPress={() => deleteUsage(u.id)} delayLongPress={500} activeOpacity={0.7}>
+                        <Row label={u.app_name} value={`${Math.floor(u.duration_minutes / 60)}h ${u.duration_minutes % 60}m`} indent profit />
                     </TouchableOpacity>
                 ))}
                 {usageList.filter(u => u.category === '투자').length === 0 && (
                     <Text style={styles.emptyRow}>투자 없음</Text>
                 )}
+
                 {/* 필수 */}
                 <Text style={[styles.sectionLabel, { marginTop: 16 }]}>필수 지출</Text>
                 {usageList.filter(u => u.category === '필수').map(u => (
-                    <TouchableOpacity
-                        key={u.id}
-                        onLongPress={() => deleteUsage(u.id)}
-                        delayLongPress={500}
-                        activeOpacity={0.7}
-                    >
-                        <Row
-                            label={u.app_name}
-                            value={`${Math.floor(u.duration_minutes / 60)}h ${u.duration_minutes % 60}m`}
-                            indent
-                            muted
-                        />
+                    <TouchableOpacity key={u.id} onLongPress={() => deleteUsage(u.id)} delayLongPress={500} activeOpacity={0.7}>
+                        <Row label={u.app_name} value={`${Math.floor(u.duration_minutes / 60)}h ${u.duration_minutes % 60}m`} indent muted />
                     </TouchableOpacity>
                 ))}
                 {usageList.filter(u => u.category === '필수').length === 0 && (
@@ -232,7 +301,6 @@ export default function TodayScreen() {
 
                 <View style={styles.thickDivider} />
 
-                {/* 순이익/손실 */}
                 <View style={[styles.verdictBox, isProfit ? styles.verdictProfit : styles.verdictLoss]}>
                     <Text style={[styles.verdictLabel, { color: isProfit ? 'rgba(74,222,128,0.7)' : 'rgba(248,113,133,0.7)' }]}>
                         {isProfit ? '당기 순이익' : '당기 순손실'}
@@ -243,27 +311,17 @@ export default function TodayScreen() {
                 </View>
 
                 <Text style={styles.longPressHint}>항목을 길게 누르면 삭제돼요</Text>
-
                 <View style={{ height: 100 }} />
 
             </ScrollView>
 
-            {/* 추가 버튼 */}
             <TouchableOpacity style={styles.fab} onPress={() => setModalVisible(true)}>
                 <Text style={styles.fabText}>＋</Text>
             </TouchableOpacity>
 
-            {/* 입력 모달 */}
             <Modal visible={modalVisible} transparent animationType="slide">
-                <KeyboardAvoidingView
-                    behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-                    style={{ flex: 1 }}
-                >
-                    <TouchableOpacity
-                        style={styles.modalOverlay}
-                        activeOpacity={1}
-                        onPress={() => setModalVisible(false)}
-                    >
+                <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+                    <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setModalVisible(false)}>
                         <TouchableOpacity activeOpacity={1} onPress={() => { }}>
                             <View style={styles.modalBox}>
                                 <Text style={styles.modalTitle}>앱 사용 시간 추가</Text>
@@ -284,10 +342,7 @@ export default function TodayScreen() {
                                 {newAppName.length > 0 && (
                                     <View style={[styles.quickRow, { marginBottom: 12 }]}>
                                         {categoryList
-                                            .filter(item =>
-                                                item.app_name.includes(newAppName) &&
-                                                item.app_name !== newAppName
-                                            )
+                                            .filter(item => item.app_name.includes(newAppName) && item.app_name !== newAppName)
                                             .slice(0, 5)
                                             .map(item => (
                                                 <TouchableOpacity
@@ -321,9 +376,7 @@ export default function TodayScreen() {
                                             style={[styles.catBtn, newCategory === cat && styles.catBtnActive]}
                                             onPress={() => setNewCategory(cat)}
                                         >
-                                            <Text style={[styles.catText, newCategory === cat && styles.catTextActive]}>
-                                                {cat}
-                                            </Text>
+                                            <Text style={[styles.catText, newCategory === cat && styles.catTextActive]}>{cat}</Text>
                                         </TouchableOpacity>
                                     ))}
                                 </View>
@@ -364,8 +417,6 @@ function Row({ label, value, indent, bold, loss, profit, muted }: {
 
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#0f0f0f', paddingHorizontal: 24 },
-    loadingContainer: { flex: 1, backgroundColor: '#0f0f0f', justifyContent: 'center', alignItems: 'center' },
-    loadingText: { fontFamily: 'GeistMono_400Regular', fontSize: 13, color: '#5a5754' },
     header: { paddingTop: 72, paddingBottom: 24 },
     headerSub: { fontFamily: 'GeistMono_400Regular', fontSize: 11, color: '#5a5754', letterSpacing: 1, marginBottom: 6 },
     headerTitle: { fontFamily: 'GeistMono_500Medium', fontSize: 28, color: '#f0ede8', letterSpacing: -0.5 },
@@ -402,39 +453,21 @@ const styles = StyleSheet.create({
     modalBtnText: { fontFamily: 'GeistMono_500Medium', fontSize: 14, color: '#ffffff' },
     modalCancel: { padding: 12, alignItems: 'center' },
     modalCancelText: { fontFamily: 'GeistMono_400Regular', fontSize: 13, color: '#5a5754' },
-    quickApps: {
-        marginBottom: 14,
-    },
-    quickLabel: {
-        fontFamily: 'GeistMono_400Regular',
-        fontSize: 10,
-        color: '#5a5754',
-        letterSpacing: 1.2,
-        textTransform: 'uppercase',
-        marginBottom: 8,
-    },
-    quickRow: {
-        flexDirection: 'row',
-        flexWrap: 'wrap',
-        gap: 6,
-    },
-    quickBtn: {
-        paddingHorizontal: 12,
-        paddingVertical: 7,
-        borderRadius: 20,
-        borderWidth: 1,
-        borderColor: '#2a2826',
-    },
-    quickBtnActive: {
-        backgroundColor: '#e8410a',
-        borderColor: '#e8410a',
-    },
-    quickBtnText: {
-        fontFamily: 'GeistMono_400Regular',
-        fontSize: 12,
-        color: '#5a5754',
-    },
-    quickBtnTextActive: {
-        color: '#ffffff',
-    },
+    quickLabel: { fontFamily: 'GeistMono_400Regular', fontSize: 10, color: '#5a5754', letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 8 },
+    quickRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+    quickBtn: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20, borderWidth: 1, borderColor: '#2a2826' },
+    quickBtnText: { fontFamily: 'GeistMono_400Regular', fontSize: 12, color: '#5a5754' },
+    warnBox: { borderWidth: 1, borderRadius: 10, padding: 12, marginBottom: 12 },
+    warnMain: { flexDirection: 'row', alignItems: 'center', gap: 7 },
+    warnDot: { width: 6, height: 6, borderRadius: 3, flexShrink: 0 },
+    warnName: { fontFamily: 'GeistMono_500Medium', fontSize: 11, flex: 1 },
+    warnPct: { fontFamily: 'GeistMono_400Regular', fontSize: 10 },
+    warnBarBg: { height: 3, backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 2, marginTop: 7, marginBottom: 4 },
+    warnBar: { height: 3, borderRadius: 2 },
+    warnToggle: { flexDirection: 'row', alignItems: 'center', paddingTop: 7, marginTop: 4, borderTopWidth: 0.5, borderTopColor: 'rgba(255,255,255,0.06)' },
+    warnToggleText: { fontFamily: 'GeistMono_400Regular', fontSize: 10, flex: 1 },
+    warnArrow: { fontFamily: 'GeistMono_400Regular', fontSize: 9 },
+    warnExtraItem: { flexDirection: 'row', alignItems: 'center', gap: 7, paddingTop: 6, marginTop: 2, borderTopWidth: 0.5, borderTopColor: 'rgba(255,255,255,0.06)' },
+    warnExtraName: { fontFamily: 'GeistMono_400Regular', fontSize: 10, flex: 1 },
+    warnExtraPct: { fontFamily: 'GeistMono_400Regular', fontSize: 10 },
 });

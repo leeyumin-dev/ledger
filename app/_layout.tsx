@@ -5,13 +5,24 @@ import { useFonts, GeistMono_400Regular, GeistMono_500Medium } from '@expo-googl
 import * as SplashScreen from 'expo-splash-screen';
 import * as Linking from 'expo-linking';
 import { supabase } from '../src/lib/supabase';
+import * as Notifications from 'expo-notifications';
 
 SplashScreen.preventAutoHideAsync();
 
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+    shouldShowBanner: true,
+    shouldShowList: true,
+  }),
+});
+
 export default function RootLayout() {
-  const [session, setSession]       = useState<Session | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
   const [initialized, setInitialized] = useState(false);
-  const [isNewUser, setIsNewUser]   = useState(false);
+  const [isNewUser, setIsNewUser] = useState(false);
 
   const [fontsLoaded] = useFonts({
     GeistMono_400Regular,
@@ -47,7 +58,7 @@ export default function RootLayout() {
     const handleDeepLink = async (url: string) => {
       if (url.includes('access_token')) {
         const params = new URLSearchParams(url.split('#')[1]);
-        const accessToken  = params.get('access_token');
+        const accessToken = params.get('access_token');
         const refreshToken = params.get('refresh_token');
 
         if (accessToken && refreshToken) {
@@ -79,6 +90,16 @@ export default function RootLayout() {
       router.replace('/login');
     }
   }, [fontsLoaded, initialized, session, isNewUser]);
+
+  useEffect(() => {
+    async function requestNotificationPermission() {
+      const { status } = await Notifications.requestPermissionsAsync();
+      if (status !== 'granted') {
+        console.log('알림 권한 거부됨');
+      }
+    }
+    requestNotificationPermission();
+  }, []);
 
   if (!fontsLoaded || !initialized) return null;
 
