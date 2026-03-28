@@ -230,6 +230,13 @@ export default function ArchiveScreen() {
             onMonthChange={(month: any) => setCurrentMonth(
               `${month.year}-${String(month.month).padStart(2, '0')}`
             )}
+            onDayPress={(day: any) => {
+              router.push({
+                pathname: '/daily-detail',
+                params: { date: day.dateString }
+              });
+            }}
+
             markingType="custom"
             markedDates={markedDates}
             theme={{
@@ -294,30 +301,6 @@ export default function ArchiveScreen() {
               );
             })()}
           </View>
-
-          {/* 감사보고서 버튼 */}
-          <TouchableOpacity
-            style={styles.reportBtn}
-            onPress={() => router.push({
-              pathname: '/monthly-report',
-              params: { month: currentMonth }
-            })}
-          >
-            <Text style={styles.reportBtnText}>{currentMonth.replace('-', '년 ')}월 감사보고서 보기</Text>
-          </TouchableOpacity>
-
-          {/* 연간보고서 버튼 */}
-          <TouchableOpacity
-            style={[styles.reportBtn, { marginTop: 8 }]}
-            onPress={() => router.push({
-              pathname: '/yearly-report',
-              params: { year: String(new Date().getFullYear()) }
-            })}
-          >
-            <Text style={styles.reportBtnText}>
-              {new Date().getFullYear()}년 사업보고서 보기
-            </Text>
-          </TouchableOpacity>
         </>
       )}
 
