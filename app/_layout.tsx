@@ -108,6 +108,8 @@ export default function RootLayout() {
       <Stack.Screen name="(tabs)" />
       <Stack.Screen name="login" />
       <Stack.Screen name="onboarding" />
+      <Stack.Screen name="weekly-detail" />
+      <Stack.Screen name="monthly-report" />
     </Stack>
   );
 }
