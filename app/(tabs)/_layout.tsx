@@ -24,7 +24,7 @@ export default function TabLayout() {
         <Tabs.Screen name="archive"  options={{ title: '보관함' }} />
         <Tabs.Screen name="share"    options={{ title: '결산' }} />
         <Tabs.Screen name="trends" options={{ title: '추세' }} />
-        <Tabs.Screen name="settings" options={{ title: '설정' }} />
+        <Tabs.Screen name="settings" options={{ href: null }} />
       </Tabs>
 
       {/* 탭바 위 배너 광고 */}

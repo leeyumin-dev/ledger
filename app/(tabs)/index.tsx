@@ -6,6 +6,7 @@ import {
 } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { supabase } from '../../src/lib/supabase';
+import { AppHeader } from '../../src/components/AppHeader';
 
 type AppUsage = {
     id: string;
@@ -183,6 +184,7 @@ export default function TodayScreen() {
 
     return (
         <View style={{ flex: 1, backgroundColor: '#0f0f0f' }}>
+            <AppHeader />
             <ScrollView style={styles.container}>
 
                 <View style={styles.header}>
@@ -417,7 +419,7 @@ function Row({ label, value, indent, bold, loss, profit, muted }: {
 
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#0f0f0f', paddingHorizontal: 24 },
-    header: { paddingTop: 72, paddingBottom: 24 },
+    header: { paddingTop: 20, paddingBottom: 24 },
     headerSub: { fontFamily: 'GeistMono_400Regular', fontSize: 11, color: '#5a5754', letterSpacing: 1, marginBottom: 6 },
     headerTitle: { fontFamily: 'GeistMono_500Medium', fontSize: 28, color: '#f0ede8', letterSpacing: -0.5 },
     thickDivider: { height: 1.5, backgroundColor: '#3a3836', marginVertical: 12 },

@@ -7,6 +7,7 @@ import { useFocusEffect } from 'expo-router';
 import { router } from 'expo-router';
 import { Calendar } from 'react-native-calendars';
 import { supabase } from '../../src/lib/supabase';
+import { AppHeader } from '../../src/components/AppHeader';
 
 type WeeklyRecord = {
   id: string;
@@ -137,7 +138,9 @@ export default function ArchiveScreen() {
   }
 
   return (
-    <ScrollView style={styles.container}>
+    <View style={{ flex: 1, backgroundColor: '#0f0f0f' }}>
+      <AppHeader />
+      <ScrollView style={styles.container}>
 
       {/* 헤더 + 토글 */}
       <View style={styles.headerRow}>
@@ -305,13 +308,14 @@ export default function ArchiveScreen() {
       )}
 
       <View style={{ height: 40 }} />
-    </ScrollView>
+      </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#0f0f0f', paddingHorizontal: 24 },
-  header: { paddingTop: 72, paddingBottom: 24 },
+  header: { paddingTop: 16, paddingBottom: 24 },
   tabRow: { flexDirection: 'row', gap: 8, marginBottom: 20 },
   tabBtn: { paddingHorizontal: 20, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: '#2a2826' },
   tabBtnActive: { backgroundColor: '#e8410a', borderColor: '#e8410a' },
@@ -347,7 +351,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-end',
-    paddingTop: 72,
+    paddingTop: 16,
     paddingBottom: 24,
   },
   headerSub: {

@@ -2,7 +2,7 @@ import { useState, useCallback } from 'react';
 import {
     View, Text, StyleSheet, ScrollView,
     TouchableOpacity, Alert, Modal,
-    TextInput, KeyboardAvoidingView, Platform
+    TextInput, KeyboardAvoidingView, Platform, Keyboard
 } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { supabase } from '../src/lib/supabase';
@@ -16,12 +16,17 @@ type AppCategory = {
 };
 
 const CATEGORIES = ['소비', '투자', '필수'];
+const PRESET_BUDGETS = [30, 60, 90, 120];
 
 export default function CategorySettingsScreen() {
     const [list, setList] = useState<AppCategory[]>([]);
     const [modalVisible, setModalVisible] = useState(false);
     const [newAppName, setNewAppName] = useState('');
     const [newCategory, setNewCategory] = useState('소비');
+    const [customInputId, setCustomInputId] = useState<string | null>(null);
+    const [customInputVal, setCustomInputVal] = useState('');
+    const [savedId, setSavedId] = useState<string | null>(null);
+    const [customSetIds, setCustomSetIds] = useState<string[]>([]);
 
     useFocusEffect(
         useCallback(() => {
@@ -89,6 +94,22 @@ export default function CategorySettingsScreen() {
         if (!error) loadList();
     }
 
+    async function confirmCustomBudget(id: string) {
+        const mins = parseInt(customInputVal);
+        if (isNaN(mins) || mins < 1) {
+            Alert.alert('입력 오류', '1 이상의 숫자를 입력해주세요.');
+            return;
+        }
+        Keyboard.dismiss();
+        setList(prev => prev.map(i => i.id === id ? { ...i, budget_minutes: mins } : i));
+        await updateBudget(id, mins);
+        setCustomSetIds(prev => prev.includes(id) ? prev : [...prev, id]);
+        setCustomInputId(null);
+        setCustomInputVal('');
+        setSavedId(id);
+        setTimeout(() => setSavedId(null), 1200);
+    }
+
     async function deleteApp(id: string, appName: string) {
         Alert.alert(
             '삭제',
@@ -109,7 +130,7 @@ export default function CategorySettingsScreen() {
 
     return (
         <View style={{ flex: 1, backgroundColor: '#0f0f0f' }}>
-            <ScrollView style={styles.container}>
+            <ScrollView style={styles.container} keyboardShouldPersistTaps="handled">
 
                 <View style={styles.header}>
                     <Text style={styles.headerSub}>카테고리 관리</Text>
@@ -132,8 +153,13 @@ export default function CategorySettingsScreen() {
                             >
                                 <View style={styles.itemTop}>
                                     <Text style={styles.itemName}>{item.app_name}</Text>
-                                    <Text style={styles.itemBudget}>
-                                        {item.budget_minutes === 0 ? '예산 없음' : `${Math.floor(item.budget_minutes / 60)}h ${item.budget_minutes % 60}m`}
+                                    <Text style={[styles.itemBudget, savedId === item.id && styles.itemBudgetSaved]}>
+                                        {savedId === item.id
+                                            ? `✓ 저장됨`
+                                            : item.budget_minutes === 0
+                                                ? '예산 없음'
+                                                : `${Math.floor(item.budget_minutes / 60)}h ${item.budget_minutes % 60}m`
+                                        }
                                     </Text>
                                 </View>
 
@@ -152,31 +178,84 @@ export default function CategorySettingsScreen() {
                                     ))}
                                 </View>
 
-                                {/* 예산 슬라이더 */}
                                 {item.category === '소비' && (
                                     <View style={styles.budgetRow}>
                                         <Text style={styles.budgetLabel}>하루 예산</Text>
                                         <View style={styles.budgetBtns}>
-                                            {[30, 60, 90, 120].map(min => (
+                                            {PRESET_BUDGETS.map(min => (
                                                 <TouchableOpacity
                                                     key={min}
-                                                    style={[styles.budgetBtn, item.budget_minutes === min && styles.budgetBtnActive]}
-                                                    onPress={() => updateBudget(item.id, min)}
+                                                    style={[styles.budgetBtn, item.budget_minutes === min && !customSetIds.includes(item.id) && customInputId !== item.id && styles.budgetBtnActive]}
+                                                    onPress={() => {
+                                                        setCustomInputId(null);
+                                                        setCustomSetIds(prev => prev.filter(x => x !== item.id));
+                                                        setList(prev => prev.map(i => i.id === item.id ? { ...i, budget_minutes: min } : i));
+                                                        updateBudget(item.id, min);
+                                                    }}
                                                 >
-                                                    <Text style={[styles.budgetBtnText, item.budget_minutes === min && styles.budgetBtnTextActive]}>
+                                                    <Text style={[styles.budgetBtnText, item.budget_minutes === min && !customSetIds.includes(item.id) && customInputId !== item.id && styles.budgetBtnTextActive]}>
                                                         {min >= 60 ? `${min / 60}h` : `${min}m`}
                                                     </Text>
                                                 </TouchableOpacity>
                                             ))}
+
                                             <TouchableOpacity
-                                                style={[styles.budgetBtn, item.budget_minutes === 0 && styles.budgetBtnActive]}
-                                                onPress={() => updateBudget(item.id, 0)}
+                                                style={[styles.budgetBtn,
+                                                (customInputId === item.id || customSetIds.includes(item.id))
+                                                && styles.budgetBtnActive]}
+                                                onPress={() => {
+                                                    setCustomInputId(item.id);
+                                                    setCustomInputVal(
+                                                        customSetIds.includes(item.id) && item.budget_minutes > 0
+                                                            ? String(item.budget_minutes)
+                                                            : ''
+                                                    );
+                                                }}
                                             >
-                                                <Text style={[styles.budgetBtnText, item.budget_minutes === 0 && styles.budgetBtnTextActive]}>
-                                                    없음
-                                                </Text>
+                                                <Text style={[styles.budgetBtnText,
+                                                (customInputId === item.id || customSetIds.includes(item.id))
+                                                && styles.budgetBtnTextActive]}>직접</Text>
                                             </TouchableOpacity>
+                                            <TouchableOpacity
+                                                style={[styles.budgetBtn, item.budget_minutes === 0 && customInputId !== item.id && styles.budgetBtnActive]}
+                                                onPress={() => {
+                                                    setCustomInputId(null);
+                                                    setCustomSetIds(prev => prev.filter(x => x !== item.id));
+                                                    setList(prev => prev.map(i => i.id === item.id ? { ...i, budget_minutes: 0 } : i));
+                                                    updateBudget(item.id, 0);
+                                                }}
+                                            >
+                                                <Text style={[styles.budgetBtnText, item.budget_minutes === 0 && customInputId !== item.id && styles.budgetBtnTextActive]}>없음</Text>
+                                            </TouchableOpacity>
+
                                         </View>
+
+                                        {customInputId === item.id && (
+                                            <View style={styles.customInputRow}>
+                                                <TextInput
+                                                    style={styles.customInput}
+                                                    value={customInputVal}
+                                                    onChangeText={setCustomInputVal}
+                                                    keyboardType="number-pad"
+                                                    placeholder="분 입력"
+                                                    placeholderTextColor="#5a5754"
+                                                    autoFocus
+                                                />
+                                                <Text style={styles.customInputUnit}>분</Text>
+                                                <TouchableOpacity
+                                                    style={styles.customConfirmBtn}
+                                                    onPress={() => confirmCustomBudget(item.id)}
+                                                >
+                                                    <Text style={styles.customConfirmText}>확인</Text>
+                                                </TouchableOpacity>
+                                                <TouchableOpacity
+                                                    style={styles.customCancelBtn}
+                                                    onPress={() => { setCustomInputId(null); setCustomInputVal(''); }}
+                                                >
+                                                    <Text style={styles.customCancelText}>취소</Text>
+                                                </TouchableOpacity>
+                                            </View>
+                                        )}
                                     </View>
                                 )}
                             </TouchableOpacity>
@@ -443,6 +522,10 @@ const styles = StyleSheet.create({
         fontSize: 11,
         color: '#e8410a',
     },
+    itemBudgetSaved: {
+        color: '#39FF14',
+        fontFamily: 'GeistMono_500Medium',
+    },
     budgetRow: {
         marginTop: 10,
         borderTopWidth: 0.5,
@@ -481,6 +564,56 @@ const styles = StyleSheet.create({
     budgetBtnTextActive: {
         color: '#e8410a',
     },
+    budgetBtnCustomActive: {
+        backgroundColor: '#161614',
+        borderColor: '#f0ede8',
+    },
+    budgetBtnCustomText: {
+        color: '#f0ede8',
+    },
+    customInputRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginTop: 10,
+        gap: 6,
+    },
+    customInput: {
+        flex: 1,
+        backgroundColor: '#0f0f0f',
+        borderWidth: 1,
+        borderColor: '#e8410a',
+        borderRadius: 8,
+        paddingHorizontal: 12,
+        paddingVertical: 8,
+        color: '#f0ede8',
+        fontFamily: 'GeistMono_500Medium',
+        fontSize: 14,
+    },
+    customInputUnit: {
+        fontFamily: 'GeistMono_400Regular',
+        fontSize: 12,
+        color: '#5a5754',
+    },
+    customConfirmBtn: {
+        backgroundColor: '#e8410a',
+        borderRadius: 8,
+        paddingHorizontal: 12,
+        paddingVertical: 8,
+    },
+    customConfirmText: {
+        fontFamily: 'GeistMono_500Medium',
+        fontSize: 12,
+        color: '#fff',
+    },
+    customCancelBtn: {
+        paddingHorizontal: 10,
+        paddingVertical: 8,
+    },
+    customCancelText: {
+        fontFamily: 'GeistMono_400Regular',
+        fontSize: 12,
+        color: '#5a5754',
+    },
     defaultAppBtnRegistered: {
         borderColor: '#3a3836',
         backgroundColor: '#0f0f0f',
@@ -490,29 +623,29 @@ const styles = StyleSheet.create({
         color: '#5a5754',
     },
     quickLabel: {
-  fontFamily: 'GeistMono_400Regular',
-  fontSize: 10,
-  color: '#5a5754',
-  letterSpacing: 1.2,
-  textTransform: 'uppercase',
-  marginBottom: 8,
-},
-quickRow: {
-  flexDirection: 'row',
-  flexWrap: 'wrap',
-  gap: 6,
-},
-defaultAppBtn: {
-  paddingHorizontal: 12,
-  paddingVertical: 7,
-  borderRadius: 20,
-  borderWidth: 1,
-  borderColor: '#2a2826',
-  backgroundColor: '#0f0f0f',
-},
-defaultAppBtnText: {
-  fontFamily: 'GeistMono_400Regular',
-  fontSize: 12,
-  color: '#9a9690',
-},
+        fontFamily: 'GeistMono_400Regular',
+        fontSize: 10,
+        color: '#5a5754',
+        letterSpacing: 1.2,
+        textTransform: 'uppercase',
+        marginBottom: 8,
+    },
+    quickRow: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: 6,
+    },
+    defaultAppBtn: {
+        paddingHorizontal: 12,
+        paddingVertical: 7,
+        borderRadius: 20,
+        borderWidth: 1,
+        borderColor: '#2a2826',
+        backgroundColor: '#0f0f0f',
+    },
+    defaultAppBtnText: {
+        fontFamily: 'GeistMono_400Regular',
+        fontSize: 12,
+        color: '#9a9690',
+    },
 });

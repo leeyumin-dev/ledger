@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { Stack, router } from 'expo-router';
 import { Session } from '@supabase/supabase-js';
-import { useFonts, GeistMono_400Regular, GeistMono_500Medium } from '@expo-google-fonts/geist-mono';
+import { useFonts, GeistMono_400Regular, GeistMono_500Medium, GeistMono_700Bold, GeistMono_800ExtraBold } from '@expo-google-fonts/geist-mono';
 import * as SplashScreen from 'expo-splash-screen';
 import * as Linking from 'expo-linking';
 import { supabase } from '../src/lib/supabase';
@@ -27,6 +27,8 @@ export default function RootLayout() {
   const [fontsLoaded] = useFonts({
     GeistMono_400Regular,
     GeistMono_500Medium,
+    GeistMono_700Bold,
+    GeistMono_800ExtraBold,
   });
 
   useEffect(() => {

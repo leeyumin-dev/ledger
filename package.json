@@ -11,6 +11,7 @@
   "dependencies": {
     "--legacy-peer-deps": "^0.0.1-security.6",
     "@expo-google-fonts/geist-mono": "^0.4.1",
+    "@expo/vector-icons": "^15.0.2",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@supabase/supabase-js": "^2.100.1",
     "expo": "~55.0.8",
@@ -30,6 +31,7 @@
     "react-native-google-mobile-ads": "^16.3.1",
     "react-native-safe-area-context": "~5.6.2",
     "react-native-screens": "~4.23.0",
+    "react-native-svg": "15.15.3",
     "react-native-url-polyfill": "^3.0.0",
     "react-native-view-shot": "^4.0.3"
   },
