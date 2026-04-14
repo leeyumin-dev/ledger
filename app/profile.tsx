@@ -2,7 +2,6 @@ import { useState, useRef, useEffect } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity,
   StyleSheet, ScrollView, Alert, Platform, AppState, ActivityIndicator, Modal,
-  useWindowDimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -15,15 +14,8 @@ import {
 } from '../src/lib/screenTime';
 import { AppTokenLabel } from '../src/components/AppTokenLabel';
 
-const GRID_COLUMNS = 4;
-const GRID_GAP = 12;
-const MODAL_PADDING = 40; // paddingHorizontal 20 × 2
-
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
-  const { width: screenWidth } = useWindowDimensions();
-  const cellSize = (screenWidth - MODAL_PADDING - GRID_GAP * (GRID_COLUMNS - 1)) / GRID_COLUMNS;
-  const iconFontSize = Math.floor(cellSize) - 4; // Swift: frame = fontSize + 4
 
   const [email, setEmail] = useState('');
   const [nickname, setNickname] = useState('');
@@ -398,27 +390,28 @@ export default function ProfileScreen() {
             {trackedApps.length === 0 ? (
               <Text style={styles.emptyText}>추적 중인 앱이 없어요</Text>
             ) : (
-              <View style={[styles.appGrid, { gap: GRID_GAP }]}>
-                {trackedApps.map(key => (
-                  <TouchableOpacity
+              <View style={styles.trackedList}>
+                {trackedApps.map((key, i) => (
+                  <View
                     key={key}
-                    onPress={editMode ? () => handleRemoveApp(key) : undefined}
-                    onLongPress={() => { setEditMode(true); }}
-                    delayLongPress={400}
-                    disabled={!!pickingApp}
-                    activeOpacity={editMode ? 0.6 : 1}
-                    style={[styles.appGridItem, { width: cellSize, height: cellSize }]}
+                    style={[styles.trackedRow, i < trackedApps.length - 1 && styles.trackedRowBorder]}
                   >
                     <AppTokenLabel
                       tokenKey={key}
-                      style={{ width: cellSize, height: cellSize }}
+                      fontSize={13}
+                      color="#f0ede8"
+                      style={{ height: 20, flex: 1 }}
                     />
                     {editMode && (
-                      <View style={styles.removeBadge}>
-                        <Text style={styles.removeBadgeText}>✕</Text>
-                      </View>
+                      <TouchableOpacity
+                        onPress={() => handleRemoveApp(key)}
+                        disabled={!!pickingApp}
+                        style={styles.removeBtn}
+                      >
+                        <Text style={styles.removeBtnText}>✕</Text>
+                      </TouchableOpacity>
                     )}
-                  </TouchableOpacity>
+                  </View>
                 ))}
               </View>
             )}
@@ -729,30 +722,34 @@ const styles = StyleSheet.create({
     paddingVertical: 20,
     textAlign: 'center',
   },
-  appGrid: {
+  trackedList: {
+    backgroundColor: '#161614',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#2a2826',
+    overflow: 'hidden',
+    marginBottom: 20,
+  },
+  trackedRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginBottom: 24,
-  },
-  appGridItem: {
     alignItems: 'center',
-    justifyContent: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    minHeight: 52,
   },
-  removeBadge: {
-    position: 'absolute',
-    top: 0,
-    right: 0,
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    backgroundColor: '#ff4444',
-    alignItems: 'center',
-    justifyContent: 'center',
+  trackedRowBorder: {
+    borderBottomWidth: 0.5,
+    borderBottomColor: '#2a2826',
   },
-  removeBadgeText: {
-    fontSize: 9,
-    color: '#fff',
-    fontWeight: '700',
+  removeBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    marginLeft: 12,
+  },
+  removeBtnText: {
+    fontFamily: 'GeistMono_400Regular',
+    fontSize: 14,
+    color: '#5a5754',
   },
   addBtn: {
     paddingVertical: 14,

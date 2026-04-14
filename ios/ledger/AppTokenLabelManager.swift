@@ -83,14 +83,12 @@ final class AppTokenLabelView: UIView {
         else { return AnyView(EmptyView()) }
 
         return AnyView(
-            GeometryReader { proxy in
-                let side = min(proxy.size.width, proxy.size.height)
-                Label(token)
-                    .labelStyle(.iconOnly)
-                    .font(.system(size: side))
-                    .scaleEffect(side / 28)
-                    .frame(width: proxy.size.width, height: proxy.size.height)
-            }
+            Label(token)
+                .labelStyle(.titleAndIcon)
+                .font(.system(size: size))
+                .foregroundColor(labelColor)
+                .lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .leading)
         )
     }
 
