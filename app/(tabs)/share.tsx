@@ -9,6 +9,8 @@ import * as MediaLibrary from 'expo-media-library';
 import Svg, { Circle, Text as SvgText } from 'react-native-svg';
 import { supabase } from '../../src/lib/supabase';
 import { AppHeader } from '../../src/components/AppHeader';
+import { AppTokenLabel } from '../../src/components/AppTokenLabel';
+import { isTokenKey } from '../../src/lib/screenTime';
 
 type UsageItem = {
   app_name: string;
@@ -251,7 +253,9 @@ export default function ShareScreen() {
                 </View>
                 {groupByApp(weekData, '소비').map(([app, min]) => (
                   <View key={app} style={styles.row}>
-                    <Text style={styles.rowName}>{app}</Text>
+                    {isTokenKey(app)
+                      ? <AppTokenLabel tokenKey={app} color="#f0ede8" fontSize={12} style={{ flex: 1, height: 26 }} />
+                      : <Text style={styles.rowName}>{app}</Text>}
                     <Text style={[styles.rowVal, { color: '#FF3131' }]}>－ {fmt(min)}</Text>
                   </View>
                 ))}
@@ -271,7 +275,9 @@ export default function ShareScreen() {
                 </View>
                 {groupByApp(weekData, '투자').map(([app, min]) => (
                   <View key={app} style={styles.row}>
-                    <Text style={styles.rowName}>{app}</Text>
+                    {isTokenKey(app)
+                      ? <AppTokenLabel tokenKey={app} color="#f0ede8" fontSize={12} style={{ flex: 1, height: 26 }} />
+                      : <Text style={styles.rowName}>{app}</Text>}
                     <Text style={[styles.rowVal, { color: '#39FF14' }]}>＋ {fmt(min)}</Text>
                   </View>
                 ))}
@@ -361,7 +367,9 @@ export default function ShareScreen() {
                   <View style={styles.mvpTop}>
                     <Text style={styles.mvpBadgeG}>MVP</Text>
                   </View>
-                  <Text style={styles.mvpName}>{top3MonthInvest[0]?.[0] || '—'}</Text>
+                  {top3MonthInvest[0] && isTokenKey(top3MonthInvest[0][0])
+                    ? <AppTokenLabel tokenKey={top3MonthInvest[0][0]} color="#f0ede8" fontSize={13} style={{ width: 120, height: 24, marginBottom: 4 }} />
+                    : <Text style={styles.mvpName}>{top3MonthInvest[0]?.[0] || '—'}</Text>}
                   <Text style={[styles.mvpTime, { color: '#39FF14' }]}>
                     ＋ {top3MonthInvest[0] ? fmt(top3MonthInvest[0][1]) : '0h'}
                   </Text>
@@ -370,7 +378,9 @@ export default function ShareScreen() {
                   <View style={styles.mvpTop}>
                     <Text style={styles.mvpBadgeR}>Villain</Text>
                   </View>
-                  <Text style={styles.mvpName}>{top3MonthLoss[0]?.[0] || '—'}</Text>
+                  {top3MonthLoss[0] && isTokenKey(top3MonthLoss[0][0])
+                    ? <AppTokenLabel tokenKey={top3MonthLoss[0][0]} color="#f0ede8" fontSize={13} style={{ width: 120, height: 24, marginBottom: 4 }} />
+                    : <Text style={styles.mvpName}>{top3MonthLoss[0]?.[0] || '—'}</Text>}
                   <Text style={[styles.mvpTime, { color: '#FF3131' }]}>
                     － {top3MonthLoss[0] ? fmt(top3MonthLoss[0][1]) : '0h'}
                   </Text>
@@ -463,7 +473,7 @@ export default function ShareScreen() {
                 <View style={styles.yearGridCard}>
                   <Text style={styles.yearGridLabel}>최고 투자 종목</Text>
                   <Text style={[styles.yearGridVal, { fontSize: 18 }]} numberOfLines={1}>
-                    {top3YearInvest[0]?.[0] || '—'}
+                    {top3YearInvest[0] ? (isTokenKey(top3YearInvest[0][0]) ? '앱' : top3YearInvest[0][0]) : '—'}
                   </Text>
                   <Text style={styles.yearGridSub}>{top3YearInvest[0] ? fmt(top3YearInvest[0][1]) : '0h'}</Text>
                   <View style={styles.barBg}>

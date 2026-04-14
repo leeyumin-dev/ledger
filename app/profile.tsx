@@ -156,12 +156,17 @@ export default function ProfileScreen() {
     const result = await presentPickerForToken();
     setPickingApp(null);
     if (result === 'cancelled') return;
+    if (result === 'category_only') {
+      Alert.alert('개별 앱을 선택해주세요', '카테고리를 펼쳐서 추적할 앱을 개별로 선택해주세요.');
+      return;
+    }
 
     const { data: { user } } = await supabase.auth.getUser();
     let added = false;
+
     for (let i = 0; i < result.count; i++) {
       const newKey = await confirmPendingTokenAuto(i);
-      if (!newKey) continue; // 중복
+      if (!newKey) continue;
 
       if (user) {
         await supabase.from('app_categories').upsert(
@@ -172,6 +177,7 @@ export default function ProfileScreen() {
       setTrackedApps(prev => prev.includes(newKey) ? prev : [...prev, newKey]);
       added = true;
     }
+
     if (added) await startMonitoring();
   }
 

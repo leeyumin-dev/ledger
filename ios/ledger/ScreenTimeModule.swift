@@ -78,16 +78,22 @@ class ScreenTimeModule: NSObject {
             let vc = AppPickerHostingController(
                 title: "추적할 앱 선택",
                 onComplete: { [weak self] selection in
-                    let tokens = Array(selection.applicationTokens)
-                    guard !tokens.isEmpty else {
+                    let appTokens = Array(selection.applicationTokens)
+                    let catTokens = Array(selection.categoryTokens)
+
+                    // 개별 앱 없이 카테고리만 선택한 경우
+                    if appTokens.isEmpty && !catTokens.isEmpty {
+                        resolve("category_only"); return
+                    }
+                    guard !appTokens.isEmpty else {
                         resolve("cancelled"); return
                     }
-                    for (i, token) in tokens.enumerated() {
+                    for (i, token) in appTokens.enumerated() {
                         var singleSel = FamilyActivitySelection()
                         singleSel.applicationTokens = [token]
                         self?.saveTokenForApp(appName: "__pending_\(i)__", selection: singleSel)
                     }
-                    resolve("selected:\(tokens.count)")
+                    resolve("selected:\(appTokens.count)")
                 },
                 onCancel: { resolve("cancelled") }
             )
@@ -140,6 +146,51 @@ class ScreenTimeModule: NSObject {
         if !tokenList.contains(newKey) {
             tokenList.append(newKey)
         }
+
+        persistTokenMap(tokenMap)
+        persistTokenList(tokenList)
+        resolve(newKey)
+    }
+
+    // MARK: - __cat_pending_{index}__ 토큰에 cat_N 키 부여 (중복 시 null 반환)
+
+    @objc
+    func confirmPendingCategoryAuto(
+        _ index: NSInteger,
+        resolve: @escaping RCTPromiseResolveBlock,
+        reject: @escaping RCTPromiseRejectBlock
+    ) {
+        var tokenMap  = loadTokenMap()
+        var tokenList = loadTokenList()
+
+        let pendingKey = "__cat_pending_\(index)__"
+        guard let b64 = tokenMap[pendingKey] else {
+            reject("NO_PENDING", "대기 중인 카테고리 토큰이 없어요.", nil); return
+        }
+
+        // 중복 검사: 기존 cat_ 키와 base64 비교
+        for existingKey in tokenList where existingKey.hasPrefix("cat_") {
+            if let existB64 = tokenMap[existingKey], existB64 == b64 {
+                tokenMap.removeValue(forKey: pendingKey)
+                tokenList.removeAll { $0 == pendingKey }
+                persistTokenMap(tokenMap)
+                persistTokenList(tokenList)
+                resolve(NSNull())
+                return
+            }
+        }
+
+        let existingIndices = tokenList.compactMap { key -> Int? in
+            guard key.hasPrefix("cat_"), let n = Int(key.dropFirst(4)) else { return nil }
+            return n
+        }
+        let nextIndex = (existingIndices.max() ?? -1) + 1
+        let newKey = "cat_\(nextIndex)"
+
+        tokenMap.removeValue(forKey: pendingKey)
+        tokenList.removeAll { $0 == pendingKey }
+        tokenMap[newKey] = b64
+        if !tokenList.contains(newKey) { tokenList.append(newKey) }
 
         persistTokenMap(tokenMap)
         persistTokenList(tokenList)
@@ -210,28 +261,40 @@ class ScreenTimeModule: NSObject {
 
         var events: [DeviceActivityEvent.Name: DeviceActivityEvent] = [:]
         var appMapDict: [String: String] = [:]
-        var validIndex = 0
+        var appIndex = 0
+        var catIndex = 0
 
         for appKey in tokenList {
             guard let b64 = tokenMap[appKey],
                   let data = Data(base64Encoded: b64),
-                  let sel  = try? PropertyListDecoder().decode(FamilyActivitySelection.self, from: data),
-                  let token = sel.applicationTokens.first else { continue }
+                  let sel  = try? PropertyListDecoder().decode(FamilyActivitySelection.self, from: data)
+            else { continue }
 
-            appMapDict[String(validIndex)] = appKey
-
-            for mins in stride(from: 5, through: 180, by: 5) {
-                let name = DeviceActivityEvent.Name("idx_\(validIndex)_t\(mins)")
-                events[name] = DeviceActivityEvent(
-                    applications: [token],
-                    threshold:    DateComponents(minute: mins)
-                )
+            if let token = sel.applicationTokens.first {
+                appMapDict[String(appIndex)] = appKey
+                for mins in stride(from: 5, through: 180, by: 5) {
+                    let name = DeviceActivityEvent.Name("idx_\(appIndex)_t\(mins)")
+                    events[name] = DeviceActivityEvent(
+                        applications: [token],
+                        threshold:    DateComponents(minute: mins)
+                    )
+                }
+                appIndex += 1
+            } else if let catToken = sel.categoryTokens.first {
+                appMapDict["cat_\(catIndex)"] = appKey
+                for mins in stride(from: 5, through: 180, by: 5) {
+                    let name = DeviceActivityEvent.Name("cat_\(catIndex)_t\(mins)")
+                    events[name] = DeviceActivityEvent(
+                        categories: [catToken],
+                        threshold:  DateComponents(minute: mins)
+                    )
+                }
+                catIndex += 1
             }
-            validIndex += 1
         }
 
-        guard validIndex > 0 else {
-            reject("DECODE_ERROR", "유효한 앱 토큰을 읽지 못했어요. 다시 선택해주세요.", nil)
+        guard appIndex + catIndex > 0 else {
+            reject("DECODE_ERROR", "유효한 앱/카테고리 토큰을 읽지 못했어요. 다시 선택해주세요.", nil)
             return
         }
 

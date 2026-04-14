@@ -4,6 +4,8 @@ import { useFocusEffect } from 'expo-router';
 import { LineChart } from 'react-native-gifted-charts';
 import { supabase } from '../../src/lib/supabase';
 import { AppHeader } from '../../src/components/AppHeader';
+import { AppTokenLabel } from '../../src/components/AppTokenLabel';
+import { isTokenKey } from '../../src/lib/screenTime';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 
@@ -154,9 +156,18 @@ export default function TrendsScreen() {
                                 ]}
                                 onPress={() => setSelectedApp(t.app_name)}
                             >
-                                <Text style={[styles.appBtnText, selectedApp === t.app_name && styles.appBtnTextActive]}>
-                                    {t.app_name}
-                                </Text>
+                                {isTokenKey(t.app_name) ? (
+                                    <AppTokenLabel
+                                        tokenKey={t.app_name}
+                                        color={selectedApp === t.app_name ? '#ffffff' : '#5a5754'}
+                                        fontSize={12}
+                                        style={{ width: 130, height: 20 }}
+                                    />
+                                ) : (
+                                    <Text style={[styles.appBtnText, selectedApp === t.app_name && styles.appBtnTextActive]}>
+                                        {t.app_name}
+                                    </Text>
+                                )}
                             </TouchableOpacity>
                         ))}
                     </ScrollView>
@@ -191,7 +202,11 @@ export default function TrendsScreen() {
                     {selected && (
                         <View style={styles.chartBox}>
                             <View style={styles.chartHeader}>
-                                <Text style={styles.chartTitle}>{selected.app_name}</Text>
+                                {isTokenKey(selected.app_name) ? (
+                                    <AppTokenLabel tokenKey={selected.app_name} color="#f0ede8" fontSize={14} style={{ height: 20 }} />
+                                ) : (
+                                    <Text style={styles.chartTitle}>{selected.app_name}</Text>
+                                )}
                                 <Text style={styles.chartSub}>최근 {RANGE_OPTIONS.find(o => o.weeks === rangeWeeks)?.label} · 시간(h)</Text>
                             </View>
                             <LineChart

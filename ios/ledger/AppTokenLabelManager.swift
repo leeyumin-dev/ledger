@@ -78,18 +78,34 @@ final class AppTokenLabelView: UIView {
               let map  = try? JSONSerialization.jsonObject(with: data) as? [String: String],
               let b64  = map[tokenKey],
               let selData = Data(base64Encoded: b64),
-              let sel  = try? PropertyListDecoder().decode(FamilyActivitySelection.self, from: selData),
-              let token = sel.applicationTokens.first
+              let sel  = try? PropertyListDecoder().decode(FamilyActivitySelection.self, from: selData)
         else { return AnyView(EmptyView()) }
 
-        return AnyView(
-            Label(token)
-                .labelStyle(.titleAndIcon)
-                .font(.system(size: size))
-                .foregroundColor(labelColor)
-                .lineLimit(1)
+        if let token = sel.applicationTokens.first {
+            return AnyView(
+                HStack(spacing: 8) {
+                    Label(token).labelStyle(.iconOnly).font(.system(size: size))
+                    Label(token).labelStyle(.titleOnly)
+                        .font(.system(size: size))
+                        .foregroundColor(labelColor)
+                        .lineLimit(1)
+                }
                 .frame(maxWidth: .infinity, alignment: .leading)
-        )
+            )
+        } else if let catToken = sel.categoryTokens.first {
+            return AnyView(
+                HStack(spacing: 8) {
+                    Label(catToken).labelStyle(.iconOnly).font(.system(size: size))
+                    Label(catToken).labelStyle(.titleOnly)
+                        .font(.system(size: size))
+                        .foregroundColor(labelColor)
+                        .lineLimit(1)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            )
+        } else {
+            return AnyView(EmptyView())
+        }
     }
 
     private func parseHexColor(_ hex: String) -> Color {

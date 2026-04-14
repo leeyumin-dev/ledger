@@ -39,8 +39,10 @@ export default function RootLayout() {
   // 로그인 상태이고 ScreenTime 권한이 있으면 모니터링 항상 활성화
   useEffect(() => {
     if (!session) return;
-    hasPermission().then(permitted => {
-      if (permitted) startMonitoring();
+    hasPermission().then(async permitted => {
+      if (!permitted) { console.log('[Layout] ScreenTime 권한 없음'); return; }
+      const ok = await startMonitoring();
+      console.log('[Layout] startMonitoring:', ok);
     });
   }, [session]);
 

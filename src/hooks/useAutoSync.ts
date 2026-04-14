@@ -20,12 +20,13 @@ export function useAutoSync() {
   // 특정 날짜의 사용량을 Supabase에 업로드
   const syncDate = useCallback(async (dateStr: string) => {
     const permitted = await hasPermission();
-    if (!permitted) return;
+    if (!permitted) { console.log('[AutoSync] 권한 없음'); return; }
 
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    if (!user) { console.log('[AutoSync] 유저 없음'); return; }
 
     const usageList = await getDailyUsage(dateStr);
+    console.log(`[AutoSync] getDailyUsage(${dateStr}):`, JSON.stringify(usageList));
     if (usageList.length === 0) return;
 
     // app_categories에서 앱 이름 → { category, bundle_id } 매핑

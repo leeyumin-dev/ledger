@@ -8,6 +8,7 @@ import { router } from 'expo-router';
 import { Calendar } from 'react-native-calendars';
 import { supabase } from '../../src/lib/supabase';
 import { AppHeader } from '../../src/components/AppHeader';
+import { isTokenKey } from '../../src/lib/screenTime';
 
 type WeeklyRecord = {
   id: string;
@@ -79,7 +80,9 @@ export default function ArchiveScreen() {
       const items = byWeek[week];
       const lossMinutes = items.filter(i => i.category === '소비').reduce((s: number, i: any) => s + i.duration_minutes, 0);
       const investMinutes = items.filter(i => i.category === '투자').reduce((s: number, i: any) => s + i.duration_minutes, 0);
-      const topApps = [...new Set(items.map((i: any) => i.app_name))].slice(0, 2);
+      const topApps = [...new Set(items.map((i: any) => i.app_name))]
+        .filter((name: string) => !isTokenKey(name))
+        .slice(0, 2);
       const isProfit = investMinutes >= lossMinutes;
       const net = Math.abs(investMinutes - lossMinutes);
       const h = Math.floor(net / 60);

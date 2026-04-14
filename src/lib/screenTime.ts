@@ -39,13 +39,14 @@ export async function hasPermission(): Promise<boolean> {
   }
 }
 
-// 피커 열기 → 선택된 앱을 __pending_0__, __pending_1__... 으로 저장
-// 반환: 'cancelled' 또는 { count: N }
-export async function presentPickerForToken(): Promise<'cancelled' | { count: number }> {
+// 피커 열기 → 선택된 앱/카테고리를 __pending_N__ / __cat_pending_N__ 으로 저장
+// 반환: 'cancelled' | 'category_only' | { count: N }
+export async function presentPickerForToken(): Promise<'cancelled' | 'category_only' | { count: number }> {
   if (!hasModule()) return 'cancelled';
   try {
     const raw = (await ScreenTimeModule.presentPickerForToken()) as string;
     if (raw === 'cancelled') return 'cancelled';
+    if (raw === 'category_only') return 'category_only';
     const count = parseInt(raw.split(':')[1] ?? '1', 10);
     return { count };
   } catch (e) {

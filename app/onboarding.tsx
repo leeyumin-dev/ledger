@@ -101,12 +101,16 @@ export default function OnboardingScreen() {
         const result = await presentPickerForToken();
         setPickingApp(null);
         if (result === 'cancelled') return;
+        if (result === 'category_only') {
+            Alert.alert('개별 앱을 선택해주세요', '카테고리를 펼쳐서 추적할 앱을 개별로 선택해주세요.');
+            return;
+        }
 
         const { data: { user } } = await supabase.auth.getUser();
+
         for (let i = 0; i < result.count; i++) {
             const newKey = await confirmPendingTokenAuto(i);
-            if (!newKey) continue; // 중복
-
+            if (!newKey) continue;
             if (user) {
                 await supabase.from('app_categories').upsert(
                     [{ user_id: user.id, app_name: newKey, bundle_id: '', category: '소비', budget_minutes: 0 }],

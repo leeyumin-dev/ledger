@@ -5,6 +5,8 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
 import { supabase } from '../src/lib/supabase';
+import { AppTokenLabel } from '../src/components/AppTokenLabel';
+import { isTokenKey } from '../src/lib/screenTime';
 
 type UsageItem = {
   id: string;
@@ -110,7 +112,9 @@ export default function WeeklyDetailScreen() {
       {groupByApp(lossItems).length === 0
         ? <Text style={styles.emptyRow}>지출 없음</Text>
         : groupByApp(lossItems).map(([app, min]) => (
-          <Row key={app} label={app} value={fmt(min)} indent loss />
+          <Row key={app} label={isTokenKey(app)
+            ? <AppTokenLabel tokenKey={app} color="#9a9690" fontSize={13} style={{ flex: 1, height: 26 }} />
+            : app} value={fmt(min)} indent loss />
         ))
       }
       <View style={styles.thinDivider} />
@@ -121,7 +125,9 @@ export default function WeeklyDetailScreen() {
       {groupByApp(investItems).length === 0
         ? <Text style={styles.emptyRow}>투자 없음</Text>
         : groupByApp(investItems).map(([app, min]) => (
-          <Row key={app} label={app} value={fmt(min)} indent profit />
+          <Row key={app} label={isTokenKey(app)
+            ? <AppTokenLabel tokenKey={app} color="#9a9690" fontSize={13} style={{ flex: 1, height: 26 }} />
+            : app} value={fmt(min)} indent profit />
         ))
       }
       <View style={styles.thinDivider} />
@@ -132,7 +138,9 @@ export default function WeeklyDetailScreen() {
         <>
           <Text style={[styles.sectionLabel, { marginTop: 16 }]}>필수 지출</Text>
           {groupByApp(essentialItems).map(([app, min]) => (
-            <Row key={app} label={app} value={fmt(min)} indent muted />
+            <Row key={app} label={isTokenKey(app)
+              ? <AppTokenLabel tokenKey={app} color="#9a9690" fontSize={13} style={{ flex: 1, height: 26 }} />
+              : app} value={fmt(min)} indent muted />
           ))}
         </>
       )}
@@ -156,13 +164,17 @@ export default function WeeklyDetailScreen() {
 }
 
 function Row({ label, value, indent, bold, loss, profit, muted }: {
-  label: string; value: string;
+  label: string | React.ReactNode; value: string;
   indent?: boolean; bold?: boolean;
   loss?: boolean; profit?: boolean; muted?: boolean;
 }) {
   return (
     <View style={[styles.row, indent && styles.rowIndent]}>
-      <Text style={[styles.rowLabel, bold && styles.boldText]}>{label}</Text>
+      <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}>
+        {typeof label === 'string'
+          ? <Text style={[styles.rowLabel, bold && styles.boldText]}>{label}</Text>
+          : label}
+      </View>
       <Text style={[
         styles.rowValue,
         bold && styles.boldText,
@@ -184,7 +196,7 @@ const styles = StyleSheet.create({
   thickDivider: { height: 1.5, backgroundColor: '#3a3836', marginVertical: 12 },
   thinDivider: { height: 0.5, backgroundColor: '#2a2826', marginVertical: 8 },
   sectionLabel: { fontFamily: 'GeistMono_400Regular', fontSize: 10, color: '#5a5754', letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 10 },
-  row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 6 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6 },
   rowIndent: { paddingLeft: 16 },
   rowLabel: { fontFamily: 'GeistMono_400Regular', fontSize: 13, color: '#9a9690' },
   rowValue: { fontFamily: 'GeistMono_400Regular', fontSize: 13, color: '#f0ede8' },

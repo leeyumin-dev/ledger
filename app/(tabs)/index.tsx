@@ -10,7 +10,7 @@ import { supabase } from '../../src/lib/supabase';
 import { AppHeader } from '../../src/components/AppHeader';
 import { useSyncedAt } from '../../src/lib/SyncContext';
 import { AppTokenLabel } from '../../src/components/AppTokenLabel';
-import { isTokenKey } from '../../src/lib/screenTime';
+import { isTokenKey, toLocalDateStr } from '../../src/lib/screenTime';
 
 type AppUsage = {
     id: string;
@@ -66,7 +66,7 @@ export default function TodayScreen() {
     const syncedAt = useSyncedAt();
     const isFocused = useRef(false);
 
-    const today = new Date().toISOString().split('T')[0];
+    const today = toLocalDateStr();
     const todayLabel = new Date().toLocaleDateString('ko-KR', {
         year: 'numeric', month: 'long', day: 'numeric', weekday: 'long'
     });
@@ -197,10 +197,10 @@ export default function TodayScreen() {
         if (navigate) router.push('/category-settings');
     }
 
-    async function deleteUsage(id: string) {
+    async function deleteUsage(id: string, isAuto: boolean) {
         Alert.alert(
             '삭제',
-            '이 항목을 삭제할까요?',
+            isAuto ? '자동 추적 항목입니다. 삭제해도 다음 동기화 시 다시 추가될 수 있어요.' : '이 항목을 삭제할까요?',
             [
                 { text: '취소', style: 'cancel' },
                 {
@@ -344,10 +344,10 @@ export default function TodayScreen() {
                 {/* 지출 */}
                 <Text style={[styles.sectionLabel, { marginTop: 16 }]}>시간 지출</Text>
                 {usageList.filter(u => u.category === '소비').map(u => (
-                    <TouchableOpacity key={u.id} onLongPress={() => u.source !== 'auto' && deleteUsage(u.id)} delayLongPress={500} activeOpacity={0.7}>
+                    <TouchableOpacity key={u.id} onLongPress={() => deleteUsage(u.id, u.source === 'auto')} delayLongPress={500} activeOpacity={0.7}>
                         <Row
                             label={isTokenKey(u.app_name)
-                                ? <AppTokenLabel tokenKey={u.app_name} color="#9a9690" fontSize={13} style={{ width: 20, height: 20 }} />
+                                ? <AppTokenLabel tokenKey={u.app_name} color="#9a9690" fontSize={13} style={{ flex: 1, height: 26 }} />
                                 : u.app_name
                             }
                             value={`${Math.floor(u.duration_minutes / 60)}h ${u.duration_minutes % 60}m`}
@@ -362,10 +362,10 @@ export default function TodayScreen() {
                 {/* 투자 */}
                 <Text style={[styles.sectionLabel, { marginTop: 16 }]}>시간 투자</Text>
                 {usageList.filter(u => u.category === '투자').map(u => (
-                    <TouchableOpacity key={u.id} onLongPress={() => u.source !== 'auto' && deleteUsage(u.id)} delayLongPress={500} activeOpacity={0.7}>
+                    <TouchableOpacity key={u.id} onLongPress={() => deleteUsage(u.id, u.source === 'auto')} delayLongPress={500} activeOpacity={0.7}>
                         <Row
                             label={isTokenKey(u.app_name)
-                                ? <AppTokenLabel tokenKey={u.app_name} color="#9a9690" fontSize={13} style={{ width: 20, height: 20 }} />
+                                ? <AppTokenLabel tokenKey={u.app_name} color="#9a9690" fontSize={13} style={{ flex: 1, height: 26 }} />
                                 : u.app_name
                             }
                             value={`${Math.floor(u.duration_minutes / 60)}h ${u.duration_minutes % 60}m`}
@@ -380,10 +380,10 @@ export default function TodayScreen() {
                 {/* 필수 */}
                 <Text style={[styles.sectionLabel, { marginTop: 16 }]}>필수 지출</Text>
                 {usageList.filter(u => u.category === '필수').map(u => (
-                    <TouchableOpacity key={u.id} onLongPress={() => u.source !== 'auto' && deleteUsage(u.id)} delayLongPress={500} activeOpacity={0.7}>
+                    <TouchableOpacity key={u.id} onLongPress={() => deleteUsage(u.id, u.source === 'auto')} delayLongPress={500} activeOpacity={0.7}>
                         <Row
                             label={isTokenKey(u.app_name)
-                                ? <AppTokenLabel tokenKey={u.app_name} color="#9a9690" fontSize={13} style={{ width: 20, height: 20 }} />
+                                ? <AppTokenLabel tokenKey={u.app_name} color="#9a9690" fontSize={13} style={{ flex: 1, height: 26 }} />
                                 : u.app_name
                             }
                             value={`${Math.floor(u.duration_minutes / 60)}h ${u.duration_minutes % 60}m`}
@@ -425,6 +425,24 @@ export default function TodayScreen() {
                         <TouchableOpacity activeOpacity={1} onPress={() => { }}>
                             <View style={styles.modalBox}>
                                 <Text style={styles.modalTitle}>앱 사용 시간 추가</Text>
+
+                                {/* 자동 추적 중인 앱 안내 */}
+                                {autoTrackedApps.size > 0 && (
+                                    <View style={styles.autoTrackNotice}>
+                                        <Text style={styles.autoTrackNoticeLabel}>자동 수집 중 — 추가 불필요</Text>
+                                        <View style={styles.autoTrackNoticeList}>
+                                            {[...autoTrackedApps].map(key => (
+                                                <AppTokenLabel
+                                                    key={key}
+                                                    tokenKey={key}
+                                                    color="#4ade80"
+                                                    fontSize={12}
+                                                    style={{ height: 20, marginBottom: 4 }}
+                                                />
+                                            ))}
+                                        </View>
+                                    </View>
+                                )}
 
                                 <Text style={styles.quickLabel}>앱 이름</Text>
                                 <TextInput
@@ -516,8 +534,8 @@ function Row({ label, value, indent, bold, loss, profit, muted, auto }: {
                     ? <Text style={[styles.rowLabel, bold && styles.boldText]}>{label}</Text>
                     : label
                 }
-                {auto && <Text style={styles.autoBadge}>자동</Text>}
             </View>
+            {auto && <Text style={styles.autoBadge}>자동</Text>}
             <Text style={[
                 styles.rowValue,
                 bold && styles.boldText,
@@ -541,9 +559,9 @@ const styles = StyleSheet.create({
     thickDivider: { height: 1.5, backgroundColor: '#3a3836', marginVertical: 12 },
     thinDivider: { height: 0.5, backgroundColor: '#2a2826', marginVertical: 8 },
     sectionLabel: { fontFamily: 'GeistMono_400Regular', fontSize: 10, color: '#5a5754', letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 10 },
-    row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 6 },
+    row: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6 },
     rowIndent: { paddingLeft: 16 },
-    rowLabelWrap: { flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 },
+    rowLabelWrap: { flexDirection: 'row', alignItems: 'center', flex: 1 },
     rowLabel: { fontFamily: 'GeistMono_400Regular', fontSize: 13, color: '#9a9690' },
     rowValue: { fontFamily: 'GeistMono_400Regular', fontSize: 13, color: '#f0ede8' },
     autoBadge: { fontFamily: 'GeistMono_400Regular', fontSize: 9, color: '#4ade80', borderWidth: 1, borderColor: 'rgba(74,222,128,0.4)', borderRadius: 4, paddingHorizontal: 4, paddingVertical: 1 },
@@ -575,6 +593,9 @@ const styles = StyleSheet.create({
     modalCancelText: { fontFamily: 'GeistMono_400Regular', fontSize: 13, color: '#5a5754' },
     modalBtnDisabled: { backgroundColor: '#2a2826' },
     autoTrackWarning: { fontFamily: 'GeistMono_400Regular', fontSize: 11, color: '#f87171', marginBottom: 8, marginTop: -4 },
+    autoTrackNotice: { backgroundColor: 'rgba(74,222,128,0.06)', borderWidth: 1, borderColor: 'rgba(74,222,128,0.2)', borderRadius: 8, padding: 10, marginBottom: 16 },
+    autoTrackNoticeLabel: { fontFamily: 'GeistMono_400Regular', fontSize: 9, color: 'rgba(74,222,128,0.6)', letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 8 },
+    autoTrackNoticeList: { gap: 2 },
     quickLabel: { fontFamily: 'GeistMono_400Regular', fontSize: 10, color: '#5a5754', letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 8 },
     quickRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
     quickBtn: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20, borderWidth: 1, borderColor: '#2a2826' },

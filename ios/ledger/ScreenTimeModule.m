@@ -26,6 +26,12 @@ RCT_EXTERN_METHOD(confirmPendingTokenAuto:
                   resolve:(RCTPromiseResolveBlock)resolve
                   reject:(RCTPromiseRejectBlock)reject)
 
+// __cat_pending_{index}__ 토큰에 자동으로 cat_N 키 부여 (중복 시 null 반환)
+RCT_EXTERN_METHOD(confirmPendingCategoryAuto:
+                  (NSInteger)index
+                  resolve:(RCTPromiseResolveBlock)resolve
+                  reject:(RCTPromiseRejectBlock)reject)
+
 // 토큰 초기화
 RCT_EXTERN_METHOD(clearAppTokens:
                   (RCTPromiseResolveBlock)resolve
