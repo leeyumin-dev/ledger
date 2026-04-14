@@ -7,6 +7,8 @@ import {
 import { useFocusEffect } from 'expo-router';
 import { supabase } from '../src/lib/supabase';
 import { DEFAULT_APPS } from '../src/lib/defaultApps';
+import { AppTokenLabel } from '../src/components/AppTokenLabel';
+import { isTokenKey } from '../src/lib/screenTime';
 
 type AppCategory = {
     id: string;
@@ -111,9 +113,10 @@ export default function CategorySettingsScreen() {
     }
 
     async function deleteApp(id: string, appName: string) {
+        const displayName = isTokenKey(appName) ? '이 앱' : appName;
         Alert.alert(
             '삭제',
-            `${appName}을 삭제할까요?`,
+            `${displayName}을 삭제할까요?`,
             [
                 { text: '취소', style: 'cancel' },
                 {
@@ -152,7 +155,11 @@ export default function CategorySettingsScreen() {
                                 delayLongPress={500}
                             >
                                 <View style={styles.itemTop}>
-                                    <Text style={styles.itemName}>{item.app_name}</Text>
+                                    {isTokenKey(item.app_name) ? (
+                                        <AppTokenLabel tokenKey={item.app_name} style={{ width: 22, height: 22 }} />
+                                    ) : (
+                                        <Text style={styles.itemName}>{item.app_name}</Text>
+                                    )}
                                     <Text style={[styles.itemBudget, savedId === item.id && styles.itemBudgetSaved]}>
                                         {savedId === item.id
                                             ? `✓ 저장됨`

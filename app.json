@@ -13,8 +13,17 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true,
-      "bundleIdentifier": "com.anonymous.ledger"
+      "bundleIdentifier": "com.leeyoumin.ledger",
+      "deploymentTarget": "16.0",
+      "entitlements": {
+        "com.apple.developer.family-controls": true,
+        "com.apple.security.application-groups": [
+          "group.com.leeyoumin.ledger"
+        ]
+      },
+      "infoPlist": {
+        "NSFamilyControlsUsageDescription": "앱 사용 시간을 측정하여 건강한 디지털 습관을 만들기 위해 사용합니다."
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -33,15 +42,11 @@
       [
         "react-native-google-mobile-ads",
         {
-          "android_app_id": "ca-app-pub-3940256099942544~3347511713",
-          "ios_app_id": "ca-app-pub-3940256099942544~1458002511"
+          "androidAppId": "ca-app-pub-3940256099942544~3347511713",
+          "iosAppId": "ca-app-pub-3940256099942544~1458002511"
         }
       ]
     ],
-    "main": "expo-router/entry",
-    "react-native-google-mobile-ads": {
-      "android_app_id": "ca-app-pub-3940256099942544~3347511713",
-      "ios_app_id": "ca-app-pub-3940256099942544~1458002511"
-    }
+    "main": "expo-router/entry"
   }
 }

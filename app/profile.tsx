@@ -1,14 +1,29 @@
-import { useState, useEffect } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity,
-  StyleSheet, ScrollView, Alert
+  StyleSheet, ScrollView, Alert, Platform, AppState, ActivityIndicator, Modal,
+  useWindowDimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { supabase } from '../src/lib/supabase';
+import {
+  hasPermission, requestPermission,
+  presentPickerForToken, confirmPendingTokenAuto,
+  removeAppToken, startMonitoring,
+  getMonitoringStatus,
+} from '../src/lib/screenTime';
+import { AppTokenLabel } from '../src/components/AppTokenLabel';
+
+const GRID_COLUMNS = 4;
+const GRID_GAP = 12;
+const MODAL_PADDING = 40; // paddingHorizontal 20 × 2
 
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
+  const { width: screenWidth } = useWindowDimensions();
+  const cellSize = (screenWidth - MODAL_PADDING - GRID_GAP * (GRID_COLUMNS - 1)) / GRID_COLUMNS;
+  const iconFontSize = Math.floor(cellSize) - 4; // Swift: frame = fontSize + 4
 
   const [email, setEmail] = useState('');
   const [nickname, setNickname] = useState('');
@@ -16,9 +31,33 @@ export default function ProfileScreen() {
   const [workHours, setWorkHours] = useState('8.0');
   const [userId, setUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [screenTimePermission, setScreenTimePermission] = useState(false);
+
+  // 추적 앱 관리 모달
+  const [appPickerVisible, setAppPickerVisible] = useState(false);
+  const [trackedApps, setTrackedApps] = useState<string[]>([]);
+  const [pickingApp, setPickingApp] = useState<string | null>(null);
+  const [editMode, setEditMode] = useState(false);
+
+  const appStateRef = useRef(AppState.currentState);
 
   useEffect(() => {
     loadProfile();
+    const timer = setTimeout(refreshPermission, 300);
+    return () => clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (nextState) => {
+      if (
+        appStateRef.current.match(/inactive|background/) &&
+        nextState === 'active'
+      ) {
+        refreshPermission();
+      }
+      appStateRef.current = nextState;
+    });
+    return () => sub.remove();
   }, []);
 
   async function loadProfile() {
@@ -27,17 +66,27 @@ export default function ProfileScreen() {
     setUserId(user.id);
     setEmail(user.email ?? '');
 
-    const { data } = await supabase
-      .from('user_settings')
-      .select('sleep_hours, work_hours, nickname')
-      .eq('user_id', user.id)
-      .single();
+    const [settingsRes, permitted] = await Promise.all([
+      supabase
+        .from('user_settings')
+        .select('sleep_hours, work_hours, nickname')
+        .eq('user_id', user.id)
+        .single(),
+      hasPermission(),
+    ]);
 
-    if (data) {
-      setSleepHours(String(data.sleep_hours));
-      setWorkHours(String(data.work_hours));
-      setNickname(data.nickname ?? '');
+    if (settingsRes.data) {
+      setSleepHours(String(settingsRes.data.sleep_hours));
+      setWorkHours(String(settingsRes.data.work_hours));
+      setNickname(settingsRes.data.nickname ?? '');
     }
+
+    setScreenTimePermission(permitted);
+  }
+
+  async function refreshPermission() {
+    const permitted = await hasPermission();
+    setScreenTimePermission(permitted);
   }
 
   async function saveProfile() {
@@ -58,6 +107,85 @@ export default function ProfileScreen() {
     else Alert.alert('저장 완료', '프로필이 저장됐어요.');
 
     setLoading(false);
+  }
+
+  async function handleScreenTimePermission() {
+    if (screenTimePermission) {
+      Alert.alert(
+        '스크린타임 권한',
+        '이미 허용되어 있어요. 권한을 변경하려면 iPhone 설정 → 스크린 타임에서 변경해요.',
+        [{ text: '확인' }]
+      );
+      return;
+    }
+    const result = await requestPermission();
+    setScreenTimePermission(result);
+  }
+
+  // 추적 앱 관리 모달 열기
+  async function handleOpenAppPicker() {
+    const status = await getMonitoringStatus();
+    setTrackedApps(status?.appList ?? []);
+    setAppPickerVisible(true);
+  }
+
+  // 추적 중인 앱 제거
+  async function handleRemoveApp(key: string) {
+    Alert.alert(
+      '추적 중지',
+      '이 앱 추적을 중지할까요?',
+      [
+        { text: '취소', style: 'cancel' },
+        {
+          text: '중지',
+          style: 'destructive',
+          onPress: async () => {
+            await removeAppToken(key);
+            const { data: { user } } = await supabase.auth.getUser();
+            if (user) {
+              await supabase
+                .from('app_categories')
+                .delete()
+                .eq('user_id', user.id)
+                .eq('app_name', key);
+            }
+            const remaining = trackedApps.filter(a => a !== key);
+            setTrackedApps(remaining);
+            if (remaining.length > 0) await startMonitoring();
+          },
+        },
+      ]
+    );
+  }
+
+  // "앱 추가" → picker → 다중 선택 지원, 중복 자동 방지
+  async function handleAddApp() {
+    setPickingApp('앱 선택 중');
+    const result = await presentPickerForToken();
+    setPickingApp(null);
+    if (result === 'cancelled') return;
+
+    const { data: { user } } = await supabase.auth.getUser();
+    let added = false;
+    for (let i = 0; i < result.count; i++) {
+      const newKey = await confirmPendingTokenAuto(i);
+      if (!newKey) continue; // 중복
+
+      if (user) {
+        await supabase.from('app_categories').upsert(
+          [{ user_id: user.id, app_name: newKey, bundle_id: '', category: '소비', budget_minutes: 0 }],
+          { onConflict: 'user_id,app_name' }
+        );
+      }
+      setTrackedApps(prev => prev.includes(newKey) ? prev : [...prev, newKey]);
+      added = true;
+    }
+    if (added) await startMonitoring();
+  }
+
+  function handleCloseAppPicker() {
+    setAppPickerVisible(false);
+    setEditMode(false);
   }
 
   async function handleLogout() {
@@ -86,9 +214,8 @@ export default function ProfileScreen() {
 
       <ScrollView contentContainerStyle={styles.content}>
 
-        {/* 계정 정보 */}
+        {/* 계정 */}
         <Text style={styles.sectionLabel}>계정</Text>
-
         <View style={styles.infoCard}>
           <View style={styles.infoRow}>
             <Text style={styles.infoLabel}>이메일</Text>
@@ -152,16 +279,60 @@ export default function ProfileScreen() {
           </View>
         </View>
 
-        {/* 가처분 시간 계산 결과 */}
         <View style={styles.resultBox}>
           <Text style={styles.resultLabel}>하루 가처분 시간</Text>
           <Text style={styles.resultValue}>
             {isNaN(disposableHours) ? '—' : `${disposableHours.toFixed(1)}h`}
           </Text>
-          <Text style={styles.resultSub}>24h － 수면 {sleepHours}h － 업무 {workHours}h</Text>
+          <Text style={styles.resultSub}>
+            24h － 수면 {sleepHours}h － 업무 {workHours}h
+          </Text>
         </View>
 
         <View style={styles.thickDivider} />
+
+        {/* 스크린타임 */}
+        {Platform.OS === 'ios' && (
+          <>
+            <Text style={styles.sectionLabel}>스크린타임</Text>
+            <View style={styles.infoCard}>
+              <View style={styles.infoRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.inputLabel}>자동 사용량 측정</Text>
+                  <Text style={styles.inputSub}>
+                    {screenTimePermission
+                      ? '앱 사용 시간이 자동으로 기록돼요'
+                      : '허용하면 앱 사용 시간을 자동으로 기록해요'}
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  style={[
+                    styles.permissionBtn,
+                    screenTimePermission && styles.permissionBtnActive,
+                  ]}
+                  onPress={handleScreenTimePermission}
+                >
+                  <Text style={[
+                    styles.permissionBtnText,
+                    screenTimePermission && styles.permissionBtnTextActive,
+                  ]}>
+                    {screenTimePermission ? '허용됨' : '허용하기'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+              {screenTimePermission && (
+                <>
+                  <View style={styles.divider} />
+                  <TouchableOpacity style={styles.infoRow} onPress={handleOpenAppPicker}>
+                    <Text style={styles.inputLabel}>추적 앱 변경</Text>
+                    <Text style={styles.inputSub}>{'>'}</Text>
+                  </TouchableOpacity>
+                </>
+              )}
+            </View>
+            <View style={styles.thickDivider} />
+          </>
+        )}
 
         {/* 앱 관리 */}
         <Text style={styles.sectionLabel}>앱 관리</Text>
@@ -193,6 +364,78 @@ export default function ProfileScreen() {
 
         <View style={{ height: 40 }} />
       </ScrollView>
+
+      {/* 추적 앱 관리 모달 */}
+      <Modal
+        visible={appPickerVisible}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={handleCloseAppPicker}
+      >
+        <View style={styles.modalContainer}>
+          {/* 모달 헤더 */}
+          <View style={styles.modalHeader}>
+            <TouchableOpacity onPress={() => setEditMode(e => !e)} style={{ width: 40 }}>
+              <Text style={[styles.modalEdit, editMode && styles.modalEditActive]}>
+                {editMode ? '완료' : '편집'}
+              </Text>
+            </TouchableOpacity>
+            <Text style={styles.modalTitle}>추적 앱 관리</Text>
+            <TouchableOpacity onPress={handleCloseAppPicker}>
+              <Text style={styles.modalDone}>닫기</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* 피커 진행 중 배너 */}
+          {pickingApp && (
+            <View style={styles.pickingBanner}>
+              <ActivityIndicator color="#e8410a" size="small" style={{ marginRight: 10 }} />
+              <Text style={styles.pickingBannerText}>{pickingApp}…</Text>
+            </View>
+          )}
+
+          <ScrollView contentContainerStyle={styles.modalContent}>
+            {trackedApps.length === 0 ? (
+              <Text style={styles.emptyText}>추적 중인 앱이 없어요</Text>
+            ) : (
+              <View style={[styles.appGrid, { gap: GRID_GAP }]}>
+                {trackedApps.map(key => (
+                  <TouchableOpacity
+                    key={key}
+                    onPress={editMode ? () => handleRemoveApp(key) : undefined}
+                    onLongPress={() => { setEditMode(true); }}
+                    delayLongPress={400}
+                    disabled={!!pickingApp}
+                    activeOpacity={editMode ? 0.6 : 1}
+                    style={[styles.appGridItem, { width: cellSize, height: cellSize }]}
+                  >
+                    <AppTokenLabel
+                      tokenKey={key}
+                      style={{ width: cellSize, height: cellSize }}
+                    />
+                    {editMode && (
+                      <View style={styles.removeBadge}>
+                        <Text style={styles.removeBadgeText}>✕</Text>
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+
+            {/* 앱 추가 버튼 */}
+            <TouchableOpacity
+              style={styles.addBtn}
+              onPress={handleAddApp}
+              disabled={!!pickingApp}
+            >
+              <Text style={styles.addBtnText}>+ 앱 추가</Text>
+            </TouchableOpacity>
+
+            <View style={{ height: 40 }} />
+          </ScrollView>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -360,6 +603,26 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: '#5a5754',
   },
+  permissionBtn: {
+    backgroundColor: '#1c1c1a',
+    borderWidth: 1,
+    borderColor: '#2a2826',
+    borderRadius: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  permissionBtnActive: {
+    backgroundColor: 'rgba(57,255,20,0.08)',
+    borderColor: 'rgba(57,255,20,0.3)',
+  },
+  permissionBtnText: {
+    fontFamily: 'GeistMono_400Regular',
+    fontSize: 12,
+    color: '#5a5754',
+  },
+  permissionBtnTextActive: {
+    color: '#39FF14',
+  },
   navBtn: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -399,5 +662,108 @@ const styles = StyleSheet.create({
     fontFamily: 'GeistMono_400Regular',
     fontSize: 13,
     color: '#5a5754',
+  },
+  // 모달
+  modalContainer: {
+    flex: 1,
+    backgroundColor: '#0f0f0f',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 0.5,
+    borderBottomColor: '#2a2826',
+  },
+  modalTitle: {
+    fontFamily: 'GeistMono_500Medium',
+    fontSize: 15,
+    color: '#f0ede8',
+  },
+  modalDone: {
+    fontFamily: 'GeistMono_500Medium',
+    fontSize: 14,
+    color: '#e8410a',
+  },
+  modalEdit: {
+    fontFamily: 'GeistMono_400Regular',
+    fontSize: 13,
+    color: '#5a5754',
+  },
+  modalEditActive: {
+    color: '#e8410a',
+  },
+  pickingBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#1c1c1a',
+    borderRadius: 8,
+    marginHorizontal: 20,
+    marginTop: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+  },
+  pickingBannerText: {
+    fontFamily: 'GeistMono_400Regular',
+    fontSize: 13,
+    color: '#f0ede8',
+  },
+  modalContent: {
+    paddingHorizontal: 20,
+    paddingTop: 24,
+  },
+  modalSectionLabel: {
+    fontFamily: 'GeistMono_400Regular',
+    fontSize: 10,
+    color: '#5a5754',
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+    marginBottom: 12,
+  },
+  emptyText: {
+    fontFamily: 'GeistMono_400Regular',
+    fontSize: 13,
+    color: '#3a3836',
+    paddingVertical: 20,
+    textAlign: 'center',
+  },
+  appGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginBottom: 24,
+  },
+  appGridItem: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  removeBadge: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: '#ff4444',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  removeBadgeText: {
+    fontSize: 9,
+    color: '#fff',
+    fontWeight: '700',
+  },
+  addBtn: {
+    paddingVertical: 14,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#2a2826',
+    alignItems: 'center',
+  },
+  addBtnText: {
+    fontFamily: 'GeistMono_400Regular',
+    fontSize: 14,
+    color: '#f0ede8',
   },
 });

@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState } from 'react';
 import { Stack, router } from 'expo-router';
 import { Session } from '@supabase/supabase-js';
 import { useFonts, GeistMono_400Regular, GeistMono_500Medium, GeistMono_700Bold, GeistMono_800ExtraBold } from '@expo-google-fonts/geist-mono';
@@ -6,6 +6,9 @@ import * as SplashScreen from 'expo-splash-screen';
 import * as Linking from 'expo-linking';
 import { supabase } from '../src/lib/supabase';
 import * as Notifications from 'expo-notifications';
+import { useAutoSync } from '../src/hooks/useAutoSync';
+import { hasPermission, startMonitoring, stopMonitoring, clearAppTokens } from '../src/lib/screenTime';
+import { SyncContext } from '../src/lib/SyncContext';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -30,10 +33,28 @@ export default function RootLayout() {
     GeistMono_700Bold,
     GeistMono_800ExtraBold,
   });
+  
+  const { syncedAt } = useAutoSync();
+
+  // 로그인 상태이고 ScreenTime 권한이 있으면 모니터링 항상 활성화
+  useEffect(() => {
+    if (!session) return;
+    hasPermission().then(permitted => {
+      if (permitted) startMonitoring();
+    });
+  }, [session]);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
       setSession(session);
+      if (session) {
+        const { data } = await supabase
+          .from('user_settings')
+          .select('id')
+          .eq('user_id', session.user.id)
+          .single();
+        setIsNewUser(!data);
+      }
       setInitialized(true);
     });
 
@@ -49,6 +70,11 @@ export default function RootLayout() {
             .single();
 
           setIsNewUser(!data);
+        }
+
+        if (_event === 'SIGNED_OUT') {
+          await stopMonitoring();
+          await clearAppTokens();
         }
       }
     );
@@ -106,12 +132,14 @@ export default function RootLayout() {
   if (!fontsLoaded || !initialized) return null;
 
   return (
-    <Stack screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="(tabs)" />
-      <Stack.Screen name="login" />
-      <Stack.Screen name="onboarding" />
-      <Stack.Screen name="weekly-detail" />
-      <Stack.Screen name="monthly-report" />
-    </Stack>
+    <SyncContext.Provider value={syncedAt}>
+      <Stack screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="login" />
+        <Stack.Screen name="onboarding" />
+        <Stack.Screen name="weekly-detail" />
+        <Stack.Screen name="monthly-report" />
+      </Stack>
+    </SyncContext.Provider>
   );
 }
