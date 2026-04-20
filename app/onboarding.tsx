@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import {
     View, Text, StyleSheet, TextInput,
     TouchableOpacity, KeyboardAvoidingView,
-    Platform, Alert, ScrollView, ActivityIndicator
+    Platform, Alert, ScrollView, ActivityIndicator, Modal
 } from 'react-native';
 import { router } from 'expo-router';
 import { supabase } from '../src/lib/supabase';
@@ -14,6 +14,7 @@ import {
     startMonitoring,
     stopMonitoring,
     removeAppToken,
+    setNameMap,
 } from '../src/lib/screenTime';
 import { AppTokenLabel } from '../src/components/AppTokenLabel';
 
@@ -26,10 +27,15 @@ export default function OnboardingScreen() {
     const [workHours, setWorkHours] = useState('8.0');
     const [loading, setLoading] = useState(false);
 
-    // Step 3: 피커로 등록된 앱 키 목록 (app_0, app_1, ...)
-    const [registeredApps, setRegisteredApps] = useState<string[]>([]);
+    // Step 3: 등록된 앱 목록 { tokenKey, displayName }
+    const [registeredApps, setRegisteredApps] = useState<{key: string; name: string}[]>([]);
     const [pickingApp, setPickingApp] = useState<string | null>(null);
     const [permissionGranted, setPermissionGranted] = useState(false);
+
+    // 이름 입력 모달 (필수 입력)
+    const [pendingTokenKeys, setPendingTokenKeys] = useState<string[]>([]);
+    const [nameInputs, setNameInputs] = useState<Record<string, string>>({});
+    const [savingNames, setSavingNames] = useState(false);
 
     // Step 3 진입 시 권한 상태 확인
     useEffect(() => {
@@ -106,22 +112,22 @@ export default function OnboardingScreen() {
             return;
         }
 
-        const { data: { user } } = await supabase.auth.getUser();
-
+        const newKeys: string[] = [];
         for (let i = 0; i < result.count; i++) {
             const newKey = await confirmPendingTokenAuto(i);
             if (!newKey) continue;
-            if (user) {
-                await supabase.from('app_categories').upsert(
-                    [{ user_id: user.id, app_name: newKey, bundle_id: '', category: '소비', budget_minutes: 0 }],
-                    { onConflict: 'user_id,app_name' }
-                );
-            }
-            setRegisteredApps(prev => prev.includes(newKey) ? prev : [...prev, newKey]);
+            newKeys.push(newKey);
+        }
+
+        if (newKeys.length > 0) {
+            setNameInputs({});
+            setPendingTokenKeys(newKeys);
         }
     }
 
     async function handleRemoveApp(key: string) {
+        const entry = registeredApps.find(a => a.key === key);
+        if (!entry) return;
         await removeAppToken(key);
         const { data: { user } } = await supabase.auth.getUser();
         if (user) {
@@ -129,15 +135,61 @@ export default function OnboardingScreen() {
                 .from('app_categories')
                 .delete()
                 .eq('user_id', user.id)
-                .eq('app_name', key);
+                .eq('app_name', entry.name);
         }
-        const remaining = registeredApps.filter(a => a !== key);
+        const remaining = registeredApps.filter(a => a.key !== key);
         setRegisteredApps(remaining);
-        // 모니터링 상태 동기화
         if (remaining.length > 0) {
             await startMonitoring();
         } else {
             await stopMonitoring();
+        }
+    }
+
+    async function saveNames() {
+        // 모든 앱에 이름 입력 필수
+        for (const key of pendingTokenKeys) {
+            if (!nameInputs[key]?.trim()) {
+                Alert.alert('이름 필요', '모든 앱의 이름을 입력해주세요.');
+                return;
+            }
+        }
+        // 이름 중복 확인
+        const newNames = pendingTokenKeys.map(k => nameInputs[k].trim());
+        const existingNames = registeredApps.map(a => a.name);
+        const duplicate = newNames.find(n => existingNames.includes(n));
+        if (duplicate) {
+            Alert.alert('중복', `'${duplicate}'는 이미 추가된 앱이에요.`);
+            return;
+        }
+
+        setSavingNames(true);
+        try {
+            const { data: { user } } = await supabase.auth.getUser();
+            const nameMap: Record<string, string> = {};
+            pendingTokenKeys.forEach(k => { nameMap[k] = nameInputs[k].trim(); });
+
+            if (user) {
+                await supabase.from('app_categories').upsert(
+                    pendingTokenKeys.map(key => ({
+                        user_id: user.id,
+                        app_name: nameMap[key],
+                        bundle_id: '',
+                        category: '소비',
+                        budget_minutes: 0,
+                    })),
+                    { onConflict: 'user_id,app_name' }
+                );
+            }
+            await setNameMap(nameMap);
+
+            setRegisteredApps(prev => [
+                ...prev,
+                ...pendingTokenKeys.map(k => ({ key: k, name: nameMap[k] })),
+            ]);
+        } finally {
+            setSavingNames(false);
+            setPendingTokenKeys([]);
         }
     }
 
@@ -155,6 +207,7 @@ export default function OnboardingScreen() {
     }
 
     return (
+        <View style={{ flex: 1 }}>
         <KeyboardAvoidingView
             style={styles.container}
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -270,14 +323,11 @@ export default function OnboardingScreen() {
                         {registeredApps.length > 0 && (
                             <View style={styles.registeredSection}>
                                 <Text style={styles.catLabel}>추적 중인 앱</Text>
-                                {registeredApps.map(key => (
-                                    <View key={key} style={styles.registeredRow}>
-                                        <AppTokenLabel
-                                            tokenKey={key}
-                                            style={{ width: 22, height: 22 }}
-                                        />
+                                {registeredApps.map(entry => (
+                                    <View key={entry.key} style={styles.registeredRow}>
+                                        <Text style={styles.registeredName}>{entry.name}</Text>
                                         <TouchableOpacity
-                                            onPress={() => handleRemoveApp(key)}
+                                            onPress={() => handleRemoveApp(entry.key)}
                                             disabled={!!pickingApp || loading}
                                             style={styles.removeBtn}
                                         >
@@ -329,6 +379,66 @@ export default function OnboardingScreen() {
 
             </ScrollView>
         </KeyboardAvoidingView>
+
+        {/* 앱 이름 입력 모달 (필수) */}
+        <Modal
+            visible={pendingTokenKeys.length > 0}
+            animationType="slide"
+            presentationStyle="pageSheet"
+            onRequestClose={() => {}}
+        >
+            <KeyboardAvoidingView
+                style={{ flex: 1, backgroundColor: '#0f0f0f' }}
+                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            >
+                <View style={styles.nicknameModalHeader}>
+                    <Text style={styles.nicknameModalTitle}>추가된 앱 이름 입력</Text>
+                </View>
+
+                <Text style={styles.nicknameModalHint}>
+                    앱 이름을 직접 입력해주세요{'\n'}
+                    <Text style={{ color: '#5a5754' }}>예: 유튜브, 인스타그램</Text>
+                </Text>
+
+                <ScrollView contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 32 }}>
+                    {pendingTokenKeys.map((key, i) => (
+                        <View key={key} style={styles.nicknameRow}>
+                            <AppTokenLabel
+                                tokenKey={key}
+                                fontSize={18}
+                                iconOnly
+                                style={{ width: 30, height: 30, marginRight: 12 }}
+                            />
+                            <TextInput
+                                style={[styles.nicknameRowInput, { flex: 1 }]}
+                                placeholder="앱 이름 입력 (필수)"
+                                placeholderTextColor="#3a3836"
+                                value={nameInputs[key] ?? ''}
+                                onChangeText={text =>
+                                    setNameInputs(prev => ({ ...prev, [key]: text }))
+                                }
+                                maxLength={20}
+                                returnKeyType={i < pendingTokenKeys.length - 1 ? 'next' : 'done'}
+                                autoFocus={i === 0}
+                            />
+                        </View>
+                    ))}
+                </ScrollView>
+
+                <View style={styles.nicknameModalActions}>
+                    <TouchableOpacity
+                        style={[styles.nicknameSaveBtn, savingNames && { opacity: 0.5 }]}
+                        onPress={saveNames}
+                        disabled={savingNames}
+                    >
+                        <Text style={styles.nicknameSaveText}>
+                            {savingNames ? '저장 중...' : '저장하기'}
+                        </Text>
+                    </TouchableOpacity>
+                </View>
+            </KeyboardAvoidingView>
+        </Modal>
+        </View>
     );
 }
 
@@ -461,6 +571,12 @@ const styles = StyleSheet.create({
         borderBottomWidth: 0.5,
         borderBottomColor: '#2a2826',
     },
+    registeredName: {
+        fontFamily: 'GeistMono_400Regular',
+        fontSize: 13,
+        color: '#f0ede8',
+        flex: 1,
+    },
     removeBtn: {
         paddingHorizontal: 10,
         paddingVertical: 4,
@@ -517,5 +633,76 @@ const styles = StyleSheet.create({
         color: '#3a3836',
         textAlign: 'center',
         paddingVertical: 8,
+    },
+
+    // 별명 입력 모달
+    nicknameModalHeader: {
+        paddingHorizontal: 24,
+        paddingTop: 24,
+        paddingBottom: 8,
+    },
+    nicknameModalTitle: {
+        fontFamily: 'GeistMono_500Medium',
+        fontSize: 17,
+        color: '#f0ede8',
+        textAlign: 'center',
+    },
+    nicknameModalHint: {
+        fontFamily: 'GeistMono_400Regular',
+        fontSize: 11,
+        color: '#9a9690',
+        lineHeight: 18,
+        paddingHorizontal: 24,
+        paddingBottom: 20,
+        textAlign: 'center',
+    },
+    nicknameRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+        paddingVertical: 14,
+        borderBottomWidth: 0.5,
+        borderBottomColor: '#2a2826',
+    },
+    nicknameRowInput: {
+        fontFamily: 'GeistMono_400Regular',
+        fontSize: 13,
+        color: '#f0ede8',
+        flex: 1,
+        textAlign: 'right',
+        padding: 0,
+    },
+    nicknameModalActions: {
+        flexDirection: 'row',
+        gap: 12,
+        paddingHorizontal: 24,
+        paddingVertical: 20,
+        borderTopWidth: 0.5,
+        borderTopColor: '#2a2826',
+    },
+    nicknameSkipBtn: {
+        flex: 1,
+        paddingVertical: 14,
+        borderRadius: 10,
+        borderWidth: 1,
+        borderColor: '#2a2826',
+        alignItems: 'center',
+    },
+    nicknameSkipText: {
+        fontFamily: 'GeistMono_400Regular',
+        fontSize: 13,
+        color: '#5a5754',
+    },
+    nicknameSaveBtn: {
+        flex: 2,
+        paddingVertical: 14,
+        borderRadius: 10,
+        backgroundColor: '#f0ede8',
+        alignItems: 'center',
+    },
+    nicknameSaveText: {
+        fontFamily: 'GeistMono_500Medium',
+        fontSize: 13,
+        color: '#0f0f0f',
     },
 });

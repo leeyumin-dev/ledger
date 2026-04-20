@@ -8,7 +8,8 @@ import { router } from 'expo-router';
 import { Calendar } from 'react-native-calendars';
 import { supabase } from '../../src/lib/supabase';
 import { AppHeader } from '../../src/components/AppHeader';
-import { isTokenKey } from '../../src/lib/screenTime';
+import { isTokenKey, getMonitoringStatus } from '../../src/lib/screenTime';
+import { checkAndAwardBadges, getEarnedBadges, Badge } from '../../src/lib/badges';
 
 type WeeklyRecord = {
   id: string;
@@ -38,6 +39,7 @@ export default function ArchiveScreen() {
   const [records, setRecords] = useState<WeeklyRecord[]>([]);
   const [heatmap, setHeatmap] = useState<(boolean | null)[]>([]);
   const [markedDates, setMarkedDates] = useState<MarkedDates>({});
+  const [badges, setBadges] = useState<Badge[]>([]);
   const [currentMonth, setCurrentMonth] = useState(
     new Date().toISOString().split('T')[0].slice(0, 7)
   );
@@ -52,13 +54,17 @@ export default function ArchiveScreen() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    const { data } = await supabase
-      .from('app_usage')
-      .select('*')
-      .eq('user_id', user.id)
-      .order('date', { ascending: false });
+    const [usageRes, monitorStatus] = await Promise.all([
+      supabase.from('app_usage').select('*').eq('user_id', user.id).order('date', { ascending: false }),
+      getMonitoringStatus(),
+    ]);
 
-    if (!data || data.length === 0) return;
+    const validLocalKeys = new Set(monitorStatus?.appList ?? []);
+    const data = (usageRes.data ?? []).filter(u =>
+      !isTokenKey(u.app_name) || validLocalKeys.has(u.app_name)
+    );
+
+    if (data.length === 0) return;
 
     // 날짜별 그룹화
     const byDate: Record<string, any[]> = {};
@@ -131,12 +137,21 @@ export default function ArchiveScreen() {
       }
     });
     setMarkedDates(marked);
+
+    // 뱃지 체크 및 로드
+    await checkAndAwardBadges(user.id);
+    const earned = await getEarnedBadges(user.id);
+    setBadges(earned);
   }
 
   function getWeekLabel(dateStr: string) {
-    const date = new Date(dateStr);
-    const month = date.getMonth() + 1;
-    const weekNum = Math.ceil(date.getDate() / 7);
+    const date = new Date(dateStr + 'T00:00:00');
+    const day = date.getDay(); // 0=일, 1=월
+    const diff = day === 0 ? -6 : 1 - day; // 해당 주 월요일로 이동
+    const monday = new Date(date);
+    monday.setDate(date.getDate() + diff);
+    const month = monday.getMonth() + 1;
+    const weekNum = Math.ceil(monday.getDate() / 7);
     return `${month}월 ${weekNum}주차`;
   }
 
@@ -198,6 +213,22 @@ export default function ArchiveScreen() {
               <Text style={styles.legendText}>흑자</Text>
             </View>
           </View>
+
+          {/* 뱃지 */}
+          {badges.length > 0 && (
+            <View style={styles.badgesSection}>
+              <Text style={styles.badgesSectionLabel}>획득 뱃지</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                {badges.map(badge => (
+                  <View key={badge.key} style={styles.badgeCard}>
+                    <Text style={styles.badgeIcon}>{badge.icon}</Text>
+                    <Text style={styles.badgeTitle}>{badge.title}</Text>
+                    <Text style={styles.badgeDesc}>{badge.description}</Text>
+                  </View>
+                ))}
+              </ScrollView>
+            </View>
+          )}
 
           <View style={styles.divider} />
 
@@ -406,5 +437,41 @@ const styles = StyleSheet.create({
     fontFamily: 'GeistMono_400Regular',
     fontSize: 13,
     color: '#f0ede8',
+  },
+  badgesSection: {
+    marginBottom: 20,
+  },
+  badgesSectionLabel: {
+    fontFamily: 'GeistMono_400Regular',
+    fontSize: 10,
+    color: '#5a5754',
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+    marginBottom: 12,
+  },
+  badgeCard: {
+    backgroundColor: '#161614',
+    borderRadius: 12,
+    padding: 14,
+    marginRight: 10,
+    width: 120,
+    borderWidth: 1,
+    borderColor: '#2a2826',
+  },
+  badgeIcon: {
+    fontSize: 24,
+    marginBottom: 8,
+  },
+  badgeTitle: {
+    fontFamily: 'GeistMono_500Medium',
+    fontSize: 12,
+    color: '#f0ede8',
+    marginBottom: 4,
+  },
+  badgeDesc: {
+    fontFamily: 'GeistMono_400Regular',
+    fontSize: 10,
+    color: '#5a5754',
+    lineHeight: 14,
   },
 });

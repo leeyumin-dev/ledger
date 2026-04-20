@@ -2,7 +2,7 @@ import { useState, useCallback } from 'react';
 import {
     View, Text, StyleSheet, ScrollView,
     TouchableOpacity, Alert, Modal,
-    TextInput, KeyboardAvoidingView, Platform, Keyboard
+    TextInput, KeyboardAvoidingView, Platform, Keyboard, ActivityIndicator
 } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { supabase } from '../src/lib/supabase';
@@ -15,20 +15,32 @@ type AppCategory = {
     app_name: string;
     category: string;
     budget_minutes: number;
+    goal_minutes: number;
 };
 
 const CATEGORIES = ['소비', '투자', '필수'];
 const PRESET_BUDGETS = [30, 60, 90, 120];
+const PRESET_GOALS = [60, 120, 300, 420]; // 1h, 2h, 5h, 7h (투자용)
+const PRESET_LIMITS = [120, 300, 420, 600]; // 2h, 5h, 7h, 10h (소비 주간 한도)
 
 export default function CategorySettingsScreen() {
     const [list, setList] = useState<AppCategory[]>([]);
+    const [loading, setLoading] = useState(true);
     const [modalVisible, setModalVisible] = useState(false);
     const [newAppName, setNewAppName] = useState('');
     const [newCategory, setNewCategory] = useState('소비');
+
+    // 예산 커스텀 입력
     const [customInputId, setCustomInputId] = useState<string | null>(null);
     const [customInputVal, setCustomInputVal] = useState('');
     const [savedId, setSavedId] = useState<string | null>(null);
     const [customSetIds, setCustomSetIds] = useState<string[]>([]);
+
+    // 목표 커스텀 입력
+    const [goalInputId, setGoalInputId] = useState<string | null>(null);
+    const [goalInputVal, setGoalInputVal] = useState('');
+    const [goalSavedId, setGoalSavedId] = useState<string | null>(null);
+    const [goalCustomSetIds, setGoalCustomSetIds] = useState<string[]>([]);
 
     useFocusEffect(
         useCallback(() => {
@@ -36,7 +48,19 @@ export default function CategorySettingsScreen() {
         }, [])
     );
 
+    // 최초 진입 시 스피너 포함 로드
     async function loadList() {
+        setLoading(true);
+        await fetchAndApply();
+        setLoading(false);
+    }
+
+    // 카테고리/예산/목표 변경 후 스피너 없이 조용히 갱신
+    async function refreshList() {
+        await fetchAndApply();
+    }
+
+    async function fetchAndApply() {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return;
 
@@ -46,7 +70,16 @@ export default function CategorySettingsScreen() {
             .eq('user_id', user.id)
             .order('app_name');
 
-        if (data) setList(data);
+        if (!data) return;
+
+        const mapped = data.map(d => ({ ...d, goal_minutes: d.goal_minutes ?? 0 }));
+        setList(mapped);
+
+        const PRESET_BUDGET_VALUES = [0, 30, 60, 90, 120];
+        const PRESET_GOAL_VALUES = [0, 60, 120, 300, 420];
+        const PRESET_LIMIT_VALUES = [0, 120, 300, 420, 600];
+        setCustomSetIds(mapped.filter(d => d.category === '소비' && !PRESET_BUDGET_VALUES.includes(d.budget_minutes ?? 0)).map(d => d.id));
+        setGoalCustomSetIds(mapped.filter(d => d.goal_minutes > 0 && !PRESET_GOAL_VALUES.includes(d.goal_minutes ?? 0) && !PRESET_LIMIT_VALUES.includes(d.goal_minutes ?? 0)).map(d => d.id));
     }
 
     async function addApp() {
@@ -65,6 +98,7 @@ export default function CategorySettingsScreen() {
                 app_name: newAppName.trim(),
                 category: newCategory,
                 budget_minutes: 0,
+                goal_minutes: 0,
             }, { onConflict: 'user_id,app_name' });
 
         if (error) {
@@ -75,25 +109,38 @@ export default function CategorySettingsScreen() {
         setNewAppName('');
         setNewCategory('소비');
         setModalVisible(false);
-        loadList();
+        refreshList();
     }
 
     async function updateCategory(id: string, category: string) {
-        const { error } = await supabase
-            .from('app_categories')
-            .update({ category })
-            .eq('id', id);
+        const appName = list.find(i => i.id === id)?.app_name;
+        // 낙관적 업데이트 — UI 즉시 반영
+        setList(prev => prev.map(i => i.id === id ? { ...i, category } : i));
 
-        if (!error) loadList();
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+
+        const updates: Promise<unknown>[] = [
+            supabase.from('app_categories').update({ category }).eq('id', id),
+        ];
+        if (appName) {
+            // app_usage에도 카테고리 동기화 (기존 기록이 올바른 버킷에 집계되도록)
+            updates.push(
+                supabase.from('app_usage').update({ category }).eq('user_id', user.id).eq('app_name', appName)
+            );
+        }
+        await Promise.all(updates);
+        refreshList();
     }
 
     async function updateBudget(id: string, minutes: number) {
-        const { error } = await supabase
-            .from('app_categories')
-            .update({ budget_minutes: minutes })
-            .eq('id', id);
+        await supabase.from('app_categories').update({ budget_minutes: minutes }).eq('id', id);
+        refreshList();
+    }
 
-        if (!error) loadList();
+    async function updateGoal(id: string, minutes: number) {
+        await supabase.from('app_categories').update({ goal_minutes: minutes }).eq('id', id);
+        refreshList();
     }
 
     async function confirmCustomBudget(id: string) {
@@ -112,62 +159,81 @@ export default function CategorySettingsScreen() {
         setTimeout(() => setSavedId(null), 1200);
     }
 
-    async function deleteApp(id: string, appName: string) {
-        const displayName = isTokenKey(appName) ? '이 앱' : appName;
-        Alert.alert(
-            '삭제',
-            `${displayName}을 삭제할까요?`,
-            [
-                { text: '취소', style: 'cancel' },
-                {
-                    text: '삭제',
-                    style: 'destructive',
-                    onPress: async () => {
-                        await supabase.from('app_categories').delete().eq('id', id);
-                        loadList();
-                    }
-                }
-            ]
-        );
+    async function confirmCustomGoal(id: string) {
+        const mins = parseInt(goalInputVal);
+        if (isNaN(mins) || mins < 1) {
+            Alert.alert('입력 오류', '1 이상의 숫자를 입력해주세요.');
+            return;
+        }
+        Keyboard.dismiss();
+        setList(prev => prev.map(i => i.id === id ? { ...i, goal_minutes: mins } : i));
+        await updateGoal(id, mins);
+        setGoalCustomSetIds(prev => prev.includes(id) ? prev : [...prev, id]);
+        setGoalInputId(null);
+        setGoalInputVal('');
+        setGoalSavedId(id);
+        setTimeout(() => setGoalSavedId(null), 1200);
+    }
+
+    function fmtMinutes(m: number) {
+        if (m === 0) return null;
+        return `${Math.floor(m / 60)}h ${m % 60}m`.replace('0h ', '');
     }
 
     return (
         <View style={{ flex: 1, backgroundColor: '#0f0f0f' }}>
-            <ScrollView style={styles.container} keyboardShouldPersistTaps="handled">
+            <ScrollView
+                style={styles.container}
+                keyboardShouldPersistTaps="handled"
+                automaticallyAdjustKeyboardInsets={true}
+            >
 
                 <View style={styles.header}>
-                    <Text style={styles.headerSub}>카테고리 관리</Text>
-                    <Text style={styles.headerTitle}>앱 분류</Text>
+                    <Text style={styles.headerSub}>앱 관리</Text>
+                    <Text style={styles.headerTitle}>소비 · 투자 설정</Text>
                 </View>
 
                 <View style={styles.thickDivider} />
 
                 <Text style={styles.hint}>앱을 소비·투자·필수로 분류해요. 오늘 화면 손익계산서에 반영돼요.</Text>
 
-                {CATEGORIES.map(cat => (
+                {loading ? (
+                    <View style={{ paddingVertical: 48, alignItems: 'center' }}>
+                        <ActivityIndicator color="#e8410a" />
+                    </View>
+                ) : null}
+
+                {!loading && CATEGORIES.map(cat => (
                     <View key={cat} style={styles.section}>
                         <Text style={styles.sectionLabel}>{cat}</Text>
                         {list.filter(item => item.category === cat).map(item => (
                             <TouchableOpacity
                                 key={item.id}
                                 style={styles.item}
-                                onLongPress={() => deleteApp(item.id, item.app_name)}
-                                delayLongPress={500}
                             >
                                 <View style={styles.itemTop}>
                                     {isTokenKey(item.app_name) ? (
-                                        <AppTokenLabel tokenKey={item.app_name} style={{ width: 22, height: 22 }} />
+                                        <AppTokenLabel tokenKey={item.app_name} iconOnly style={{ width: 26, height: 26 }} />
                                     ) : (
                                         <Text style={styles.itemName}>{item.app_name}</Text>
                                     )}
-                                    <Text style={[styles.itemBudget, savedId === item.id && styles.itemBudgetSaved]}>
-                                        {savedId === item.id
-                                            ? `✓ 저장됨`
-                                            : item.budget_minutes === 0
-                                                ? '예산 없음'
-                                                : `${Math.floor(item.budget_minutes / 60)}h ${item.budget_minutes % 60}m`
-                                        }
-                                    </Text>
+                                    <View style={{ flexDirection: 'row', gap: 8 }}>
+                                        {item.category === '소비' && fmtMinutes(item.budget_minutes) && (
+                                            <Text style={[styles.itemBadge, savedId === item.id && styles.itemBadgeSaved]}>
+                                                {savedId === item.id ? '✓ 저장됨' : `예산 ${fmtMinutes(item.budget_minutes)}`}
+                                            </Text>
+                                        )}
+                                        {item.category === '소비' && fmtMinutes(item.goal_minutes) && (
+                                            <Text style={[styles.itemBadge, styles.itemBadgeLimit, goalSavedId === item.id && styles.itemBadgeSaved]}>
+                                                {goalSavedId === item.id ? '✓ 저장됨' : `한도 ${fmtMinutes(item.goal_minutes)}/주`}
+                                            </Text>
+                                        )}
+                                        {item.category === '투자' && fmtMinutes(item.goal_minutes) && (
+                                            <Text style={[styles.itemBadge, styles.itemBadgeGoal, goalSavedId === item.id && styles.itemBadgeSaved]}>
+                                                {goalSavedId === item.id ? '✓ 저장됨' : `목표 ${fmtMinutes(item.goal_minutes)}/주`}
+                                            </Text>
+                                        )}
+                                    </View>
                                 </View>
 
                                 {/* 카테고리 선택 */}
@@ -185,14 +251,15 @@ export default function CategorySettingsScreen() {
                                     ))}
                                 </View>
 
+                                {/* 소비: 하루 예산 */}
                                 {item.category === '소비' && (
-                                    <View style={styles.budgetRow}>
-                                        <Text style={styles.budgetLabel}>하루 예산</Text>
-                                        <View style={styles.budgetBtns}>
+                                    <View style={styles.settingRow}>
+                                        <Text style={styles.settingLabel}>하루 예산</Text>
+                                        <View style={styles.presetBtns}>
                                             {PRESET_BUDGETS.map(min => (
                                                 <TouchableOpacity
                                                     key={min}
-                                                    style={[styles.budgetBtn, item.budget_minutes === min && !customSetIds.includes(item.id) && customInputId !== item.id && styles.budgetBtnActive]}
+                                                    style={[styles.presetBtn, item.budget_minutes === min && !customSetIds.includes(item.id) && customInputId !== item.id && styles.presetBtnActive]}
                                                     onPress={() => {
                                                         setCustomInputId(null);
                                                         setCustomSetIds(prev => prev.filter(x => x !== item.id));
@@ -200,31 +267,23 @@ export default function CategorySettingsScreen() {
                                                         updateBudget(item.id, min);
                                                     }}
                                                 >
-                                                    <Text style={[styles.budgetBtnText, item.budget_minutes === min && !customSetIds.includes(item.id) && customInputId !== item.id && styles.budgetBtnTextActive]}>
+                                                    <Text style={[styles.presetBtnText, item.budget_minutes === min && !customSetIds.includes(item.id) && customInputId !== item.id && styles.presetBtnTextActive]}>
                                                         {min >= 60 ? `${min / 60}h` : `${min}m`}
                                                     </Text>
                                                 </TouchableOpacity>
                                             ))}
-
                                             <TouchableOpacity
-                                                style={[styles.budgetBtn,
-                                                (customInputId === item.id || customSetIds.includes(item.id))
-                                                && styles.budgetBtnActive]}
+                                                style={[styles.presetBtn, (customInputId === item.id || customSetIds.includes(item.id)) && styles.presetBtnActive]}
                                                 onPress={() => {
+                                                    setGoalInputId(null);
                                                     setCustomInputId(item.id);
-                                                    setCustomInputVal(
-                                                        customSetIds.includes(item.id) && item.budget_minutes > 0
-                                                            ? String(item.budget_minutes)
-                                                            : ''
-                                                    );
+                                                    setCustomInputVal(customSetIds.includes(item.id) && item.budget_minutes > 0 ? String(item.budget_minutes) : '');
                                                 }}
                                             >
-                                                <Text style={[styles.budgetBtnText,
-                                                (customInputId === item.id || customSetIds.includes(item.id))
-                                                && styles.budgetBtnTextActive]}>직접</Text>
+                                                <Text style={[styles.presetBtnText, (customInputId === item.id || customSetIds.includes(item.id)) && styles.presetBtnTextActive]}>직접</Text>
                                             </TouchableOpacity>
                                             <TouchableOpacity
-                                                style={[styles.budgetBtn, item.budget_minutes === 0 && customInputId !== item.id && styles.budgetBtnActive]}
+                                                style={[styles.presetBtn, item.budget_minutes === 0 && customInputId !== item.id && styles.presetBtnActive]}
                                                 onPress={() => {
                                                     setCustomInputId(null);
                                                     setCustomSetIds(prev => prev.filter(x => x !== item.id));
@@ -232,11 +291,9 @@ export default function CategorySettingsScreen() {
                                                     updateBudget(item.id, 0);
                                                 }}
                                             >
-                                                <Text style={[styles.budgetBtnText, item.budget_minutes === 0 && customInputId !== item.id && styles.budgetBtnTextActive]}>없음</Text>
+                                                <Text style={[styles.presetBtnText, item.budget_minutes === 0 && customInputId !== item.id && styles.presetBtnTextActive]}>없음</Text>
                                             </TouchableOpacity>
-
                                         </View>
-
                                         {customInputId === item.id && (
                                             <View style={styles.customInputRow}>
                                                 <TextInput
@@ -249,16 +306,142 @@ export default function CategorySettingsScreen() {
                                                     autoFocus
                                                 />
                                                 <Text style={styles.customInputUnit}>분</Text>
-                                                <TouchableOpacity
-                                                    style={styles.customConfirmBtn}
-                                                    onPress={() => confirmCustomBudget(item.id)}
-                                                >
+                                                <TouchableOpacity style={styles.customConfirmBtn} onPress={() => confirmCustomBudget(item.id)}>
                                                     <Text style={styles.customConfirmText}>확인</Text>
                                                 </TouchableOpacity>
+                                                <TouchableOpacity style={styles.customCancelBtn} onPress={() => { setCustomInputId(null); setCustomInputVal(''); }}>
+                                                    <Text style={styles.customCancelText}>취소</Text>
+                                                </TouchableOpacity>
+                                            </View>
+                                        )}
+                                    </View>
+                                )}
+
+                                {/* 소비: 주간 한도 */}
+                                {item.category === '소비' && (
+                                    <View style={styles.settingRow}>
+                                        <Text style={[styles.settingLabel, { color: '#f87171' }]}>주간 한도</Text>
+                                        <View style={styles.presetBtns}>
+                                            {PRESET_LIMITS.map(min => (
                                                 <TouchableOpacity
-                                                    style={styles.customCancelBtn}
-                                                    onPress={() => { setCustomInputId(null); setCustomInputVal(''); }}
+                                                    key={min}
+                                                    style={[styles.presetBtn, styles.presetBtnLimit, item.goal_minutes === min && !goalCustomSetIds.includes(item.id) && goalInputId !== item.id && styles.presetBtnLimitActive]}
+                                                    onPress={() => {
+                                                        setGoalInputId(null);
+                                                        setGoalCustomSetIds(prev => prev.filter(x => x !== item.id));
+                                                        setList(prev => prev.map(i => i.id === item.id ? { ...i, goal_minutes: min } : i));
+                                                        updateGoal(item.id, min);
+                                                    }}
                                                 >
+                                                    <Text style={[styles.presetBtnText, item.goal_minutes === min && !goalCustomSetIds.includes(item.id) && goalInputId !== item.id && styles.presetBtnLimitTextActive]}>
+                                                        {`${min / 60}h`}
+                                                    </Text>
+                                                </TouchableOpacity>
+                                            ))}
+                                            <TouchableOpacity
+                                                style={[styles.presetBtn, styles.presetBtnLimit, (goalInputId === item.id || goalCustomSetIds.includes(item.id)) && styles.presetBtnLimitActive]}
+                                                onPress={() => {
+                                                    setCustomInputId(null);
+                                                    setGoalInputId(item.id);
+                                                    setGoalInputVal(goalCustomSetIds.includes(item.id) && item.goal_minutes > 0 ? String(item.goal_minutes) : '');
+                                                }}
+                                            >
+                                                <Text style={[styles.presetBtnText, (goalInputId === item.id || goalCustomSetIds.includes(item.id)) && styles.presetBtnLimitTextActive]}>직접</Text>
+                                            </TouchableOpacity>
+                                            <TouchableOpacity
+                                                style={[styles.presetBtn, styles.presetBtnLimit, item.goal_minutes === 0 && goalInputId !== item.id && styles.presetBtnLimitActive]}
+                                                onPress={() => {
+                                                    setGoalInputId(null);
+                                                    setGoalCustomSetIds(prev => prev.filter(x => x !== item.id));
+                                                    setList(prev => prev.map(i => i.id === item.id ? { ...i, goal_minutes: 0 } : i));
+                                                    updateGoal(item.id, 0);
+                                                }}
+                                            >
+                                                <Text style={[styles.presetBtnText, item.goal_minutes === 0 && goalInputId !== item.id && styles.presetBtnLimitTextActive]}>없음</Text>
+                                            </TouchableOpacity>
+                                        </View>
+                                        {goalInputId === item.id && item.category === '소비' && (
+                                            <View style={styles.customInputRow}>
+                                                <TextInput
+                                                    style={[styles.customInput, { borderColor: '#f87171' }]}
+                                                    value={goalInputVal}
+                                                    onChangeText={setGoalInputVal}
+                                                    keyboardType="number-pad"
+                                                    placeholder="분 입력"
+                                                    placeholderTextColor="#5a5754"
+                                                    autoFocus
+                                                />
+                                                <Text style={styles.customInputUnit}>분/주</Text>
+                                                <TouchableOpacity style={[styles.customConfirmBtn, { backgroundColor: '#f87171' }]} onPress={() => confirmCustomGoal(item.id)}>
+                                                    <Text style={[styles.customConfirmText, { color: '#0f0f0f' }]}>확인</Text>
+                                                </TouchableOpacity>
+                                                <TouchableOpacity style={styles.customCancelBtn} onPress={() => { setGoalInputId(null); setGoalInputVal(''); }}>
+                                                    <Text style={styles.customCancelText}>취소</Text>
+                                                </TouchableOpacity>
+                                            </View>
+                                        )}
+                                    </View>
+                                )}
+
+                                {/* 투자: 주간 목표 */}
+                                {item.category === '투자' && (
+                                    <View style={styles.settingRow}>
+                                        <Text style={[styles.settingLabel, { color: '#4ade80' }]}>주간 목표</Text>
+                                        <View style={styles.presetBtns}>
+                                            {PRESET_GOALS.map(min => (
+                                                <TouchableOpacity
+                                                    key={min}
+                                                    style={[styles.presetBtn, styles.presetBtnGoal, item.goal_minutes === min && !goalCustomSetIds.includes(item.id) && goalInputId !== item.id && styles.presetBtnGoalActive]}
+                                                    onPress={() => {
+                                                        setGoalInputId(null);
+                                                        setGoalCustomSetIds(prev => prev.filter(x => x !== item.id));
+                                                        setList(prev => prev.map(i => i.id === item.id ? { ...i, goal_minutes: min } : i));
+                                                        updateGoal(item.id, min);
+                                                    }}
+                                                >
+                                                    <Text style={[styles.presetBtnText, item.goal_minutes === min && !goalCustomSetIds.includes(item.id) && goalInputId !== item.id && styles.presetBtnGoalTextActive]}>
+                                                        {min >= 60 ? `${min / 60}h` : `${min}m`}
+                                                    </Text>
+                                                </TouchableOpacity>
+                                            ))}
+                                            <TouchableOpacity
+                                                style={[styles.presetBtn, styles.presetBtnGoal, (goalInputId === item.id || goalCustomSetIds.includes(item.id)) && styles.presetBtnGoalActive]}
+                                                onPress={() => {
+                                                    setCustomInputId(null);
+                                                    setGoalInputId(item.id);
+                                                    setGoalInputVal(goalCustomSetIds.includes(item.id) && item.goal_minutes > 0 ? String(item.goal_minutes) : '');
+                                                }}
+                                            >
+                                                <Text style={[styles.presetBtnText, (goalInputId === item.id || goalCustomSetIds.includes(item.id)) && styles.presetBtnGoalTextActive]}>직접</Text>
+                                            </TouchableOpacity>
+                                            <TouchableOpacity
+                                                style={[styles.presetBtn, styles.presetBtnGoal, item.goal_minutes === 0 && goalInputId !== item.id && styles.presetBtnGoalActive]}
+                                                onPress={() => {
+                                                    setGoalInputId(null);
+                                                    setGoalCustomSetIds(prev => prev.filter(x => x !== item.id));
+                                                    setList(prev => prev.map(i => i.id === item.id ? { ...i, goal_minutes: 0 } : i));
+                                                    updateGoal(item.id, 0);
+                                                }}
+                                            >
+                                                <Text style={[styles.presetBtnText, item.goal_minutes === 0 && goalInputId !== item.id && styles.presetBtnGoalTextActive]}>없음</Text>
+                                            </TouchableOpacity>
+                                        </View>
+                                        {goalInputId === item.id && (
+                                            <View style={styles.customInputRow}>
+                                                <TextInput
+                                                    style={[styles.customInput, { borderColor: '#4ade80' }]}
+                                                    value={goalInputVal}
+                                                    onChangeText={setGoalInputVal}
+                                                    keyboardType="number-pad"
+                                                    placeholder="분 입력"
+                                                    placeholderTextColor="#5a5754"
+                                                    autoFocus
+                                                />
+                                                <Text style={styles.customInputUnit}>분/주</Text>
+                                                <TouchableOpacity style={[styles.customConfirmBtn, { backgroundColor: '#4ade80' }]} onPress={() => confirmCustomGoal(item.id)}>
+                                                    <Text style={[styles.customConfirmText, { color: '#0f0f0f' }]}>확인</Text>
+                                                </TouchableOpacity>
+                                                <TouchableOpacity style={styles.customCancelBtn} onPress={() => { setGoalInputId(null); setGoalInputVal(''); }}>
                                                     <Text style={styles.customCancelText}>취소</Text>
                                                 </TouchableOpacity>
                                             </View>
@@ -273,7 +456,7 @@ export default function CategorySettingsScreen() {
                     </View>
                 ))}
 
-                <Text style={styles.longPressHint}>항목을 길게 누르면 삭제돼요</Text>
+                <Text style={styles.longPressHint}>추적 앱 추가·삭제는 프로필 → 추적 앱 변경에서 할 수 있어요</Text>
                 <View style={{ height: 100 }} />
 
             </ScrollView>
@@ -412,6 +595,27 @@ const styles = StyleSheet.create({
         color: '#f0ede8',
         marginBottom: 10,
     },
+    itemTop: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 10,
+    },
+    itemBadge: {
+        fontFamily: 'GeistMono_400Regular',
+        fontSize: 11,
+        color: '#e8410a',
+    },
+    itemBadgeGoal: {
+        color: '#4ade80',
+    },
+    itemBadgeLimit: {
+        color: '#f87171',
+    },
+    itemBadgeSaved: {
+        color: '#39FF14',
+        fontFamily: 'GeistMono_500Medium',
+    },
     catBtnRow: {
         flexDirection: 'row',
         gap: 6,
@@ -439,6 +643,107 @@ const styles = StyleSheet.create({
     },
     catBtnTextActive: {
         color: '#ffffff',
+    },
+    settingRow: {
+        marginTop: 10,
+        borderTopWidth: 0.5,
+        borderTopColor: '#2a2826',
+        paddingTop: 10,
+    },
+    settingLabel: {
+        fontFamily: 'GeistMono_400Regular',
+        fontSize: 10,
+        color: '#5a5754',
+        letterSpacing: 1,
+        textTransform: 'uppercase',
+        marginBottom: 8,
+    },
+    presetBtns: {
+        flexDirection: 'row',
+        gap: 6,
+        flexWrap: 'wrap',
+    },
+    presetBtn: {
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderRadius: 20,
+        borderWidth: 1,
+        borderColor: '#2a2826',
+    },
+    presetBtnGoal: {
+        borderColor: '#1a3320',
+    },
+    presetBtnLimit: {
+        borderColor: '#3a1a1a',
+    },
+    presetBtnActive: {
+        backgroundColor: '#161614',
+        borderColor: '#e8410a',
+    },
+    presetBtnGoalActive: {
+        backgroundColor: '#0f2018',
+        borderColor: '#4ade80',
+    },
+    presetBtnLimitActive: {
+        backgroundColor: '#200f0f',
+        borderColor: '#f87171',
+    },
+    presetBtnText: {
+        fontFamily: 'GeistMono_400Regular',
+        fontSize: 11,
+        color: '#5a5754',
+    },
+    presetBtnTextActive: {
+        color: '#e8410a',
+    },
+    presetBtnGoalTextActive: {
+        color: '#4ade80',
+    },
+    presetBtnLimitTextActive: {
+        color: '#f87171',
+    },
+    customInputRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginTop: 10,
+        gap: 6,
+    },
+    customInput: {
+        flex: 1,
+        backgroundColor: '#0f0f0f',
+        borderWidth: 1,
+        borderColor: '#e8410a',
+        borderRadius: 8,
+        paddingHorizontal: 12,
+        paddingVertical: 8,
+        color: '#f0ede8',
+        fontFamily: 'GeistMono_500Medium',
+        fontSize: 14,
+    },
+    customInputUnit: {
+        fontFamily: 'GeistMono_400Regular',
+        fontSize: 12,
+        color: '#5a5754',
+    },
+    customConfirmBtn: {
+        backgroundColor: '#e8410a',
+        borderRadius: 8,
+        paddingHorizontal: 12,
+        paddingVertical: 8,
+    },
+    customConfirmText: {
+        fontFamily: 'GeistMono_500Medium',
+        fontSize: 12,
+        color: '#fff',
+    },
+    customCancelBtn: {
+        paddingHorizontal: 10,
+        paddingVertical: 8,
+    },
+    customCancelText: {
+        fontFamily: 'GeistMono_400Regular',
+        fontSize: 12,
+        color: '#5a5754',
     },
     emptyText: {
         fontFamily: 'GeistMono_400Regular',
@@ -518,117 +823,6 @@ const styles = StyleSheet.create({
         fontSize: 13,
         color: '#5a5754',
     },
-    itemTop: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        marginBottom: 10,
-    },
-    itemBudget: {
-        fontFamily: 'GeistMono_400Regular',
-        fontSize: 11,
-        color: '#e8410a',
-    },
-    itemBudgetSaved: {
-        color: '#39FF14',
-        fontFamily: 'GeistMono_500Medium',
-    },
-    budgetRow: {
-        marginTop: 10,
-        borderTopWidth: 0.5,
-        borderTopColor: '#2a2826',
-        paddingTop: 10,
-    },
-    budgetLabel: {
-        fontFamily: 'GeistMono_400Regular',
-        fontSize: 10,
-        color: '#5a5754',
-        letterSpacing: 1,
-        textTransform: 'uppercase',
-        marginBottom: 8,
-    },
-    budgetBtns: {
-        flexDirection: 'row',
-        gap: 6,
-        flexWrap: 'wrap',
-    },
-    budgetBtn: {
-        paddingHorizontal: 12,
-        paddingVertical: 6,
-        borderRadius: 20,
-        borderWidth: 1,
-        borderColor: '#2a2826',
-    },
-    budgetBtnActive: {
-        backgroundColor: '#161614',
-        borderColor: '#e8410a',
-    },
-    budgetBtnText: {
-        fontFamily: 'GeistMono_400Regular',
-        fontSize: 11,
-        color: '#5a5754',
-    },
-    budgetBtnTextActive: {
-        color: '#e8410a',
-    },
-    budgetBtnCustomActive: {
-        backgroundColor: '#161614',
-        borderColor: '#f0ede8',
-    },
-    budgetBtnCustomText: {
-        color: '#f0ede8',
-    },
-    customInputRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        marginTop: 10,
-        gap: 6,
-    },
-    customInput: {
-        flex: 1,
-        backgroundColor: '#0f0f0f',
-        borderWidth: 1,
-        borderColor: '#e8410a',
-        borderRadius: 8,
-        paddingHorizontal: 12,
-        paddingVertical: 8,
-        color: '#f0ede8',
-        fontFamily: 'GeistMono_500Medium',
-        fontSize: 14,
-    },
-    customInputUnit: {
-        fontFamily: 'GeistMono_400Regular',
-        fontSize: 12,
-        color: '#5a5754',
-    },
-    customConfirmBtn: {
-        backgroundColor: '#e8410a',
-        borderRadius: 8,
-        paddingHorizontal: 12,
-        paddingVertical: 8,
-    },
-    customConfirmText: {
-        fontFamily: 'GeistMono_500Medium',
-        fontSize: 12,
-        color: '#fff',
-    },
-    customCancelBtn: {
-        paddingHorizontal: 10,
-        paddingVertical: 8,
-    },
-    customCancelText: {
-        fontFamily: 'GeistMono_400Regular',
-        fontSize: 12,
-        color: '#5a5754',
-    },
-    defaultAppBtnRegistered: {
-        borderColor: '#3a3836',
-        backgroundColor: '#0f0f0f',
-        opacity: 0.4,
-    },
-    defaultAppBtnTextRegistered: {
-        color: '#5a5754',
-    },
     quickLabel: {
         fontFamily: 'GeistMono_400Regular',
         fontSize: 10,
@@ -650,9 +844,17 @@ const styles = StyleSheet.create({
         borderColor: '#2a2826',
         backgroundColor: '#0f0f0f',
     },
+    defaultAppBtnRegistered: {
+        borderColor: '#3a3836',
+        backgroundColor: '#0f0f0f',
+        opacity: 0.4,
+    },
     defaultAppBtnText: {
         fontFamily: 'GeistMono_400Regular',
         fontSize: 12,
         color: '#9a9690',
+    },
+    defaultAppBtnTextRegistered: {
+        color: '#5a5754',
     },
 });

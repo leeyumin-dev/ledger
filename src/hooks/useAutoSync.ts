@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useState } from 'react';
+import { useEffect, useCallback, useRef, useState } from 'react';
 import { AppState } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../lib/supabase';
@@ -7,15 +7,21 @@ import {
   getDailyUsage,
   checkSyncNeeded,
   clearSyncNeeded,
+  syncBudgetMap,
+  clearDailyUsage,
+  getNameMap,
   toLocalDateStr,
   UsageData,
 } from '../lib/screenTime';
 
 const LAST_SYNC_KEY = 'ledger_last_sync_date';
+const FOREGROUND_SYNC_COOLDOWN_MS = 30_000;
 
 export function useAutoSync() {
   // sync 완료 시각 — 변경될 때마다 오늘 화면이 loadData()를 재호출
   const [syncedAt, setSyncedAt] = useState(0);
+  const syncInFlightRef = useRef(false);
+  const lastSyncStartedAtRef = useRef(0);
 
   // 특정 날짜의 사용량을 Supabase에 업로드
   const syncDate = useCallback(async (dateStr: string) => {
@@ -76,37 +82,74 @@ export function useAutoSync() {
 
     if (error) {
       console.warn('[AutoSync] 업로드 실패:', error.message);
-    } else {
-      console.log(`[AutoSync] ${dateStr} — ${rows.length}개 앱 동기화 완료`);
+      return;
+    }
+
+    console.log(`[AutoSync] ${dateStr} — ${rows.length}개 앱 동기화 완료`);
+
+    // 동기화 완료 → UserDefaults 버퍼 삭제 (오늘 날짜 제외 — Extension이 계속 써야 함)
+    if (dateStr !== toLocalDateStr()) {
+      await clearDailyUsage(dateStr);
+    }
+
+    // 예산 맵을 App Group UserDefaults에 동기화 → Extension이 백그라운드에서 알림 발송
+    if (dateStr === toLocalDateStr()) {
+      const { data: budgetData } = await supabase
+        .from('app_categories')
+        .select('app_name, budget_minutes, display_name')
+        .eq('user_id', user.id)
+        .gt('budget_minutes', 0);
+
+      if (budgetData && budgetData.length > 0) {
+        const budgetMap: Record<string, { budget: number; display?: string }> = {};
+        budgetData.forEach(b => {
+          budgetMap[b.app_name] = {
+            budget: b.budget_minutes,
+            display: b.display_name ?? undefined,
+          };
+        });
+        await syncBudgetMap(budgetMap);
+      }
     }
   }, []);
 
   const sync = useCallback(async () => {
+    if (syncInFlightRef.current) return;
+
+    syncInFlightRef.current = true;
+    lastSyncStartedAtRef.current = Date.now();
+
     const today = toLocalDateStr();
-    const lastSyncDate = await AsyncStorage.getItem(LAST_SYNC_KEY);
+    try {
+      const lastSyncDate = await AsyncStorage.getItem(LAST_SYNC_KEY);
 
-    // 1. 날짜가 바뀐 경우 전날 데이터 sync (intervalDidEnd 미발화 대비)
-    if (lastSyncDate && lastSyncDate !== today) {
-      await syncDate(lastSyncDate);
-    }
+      // 1. 날짜가 바뀐 경우 전날 데이터 sync (intervalDidEnd 미발화 대비)
+      if (lastSyncDate && lastSyncDate !== today) {
+        await syncDate(lastSyncDate);
+      }
 
-    // 2. 오늘 데이터 sync (앱 활성화마다)
-    await syncDate(today);
-    await AsyncStorage.setItem(LAST_SYNC_KEY, today);
-    setSyncedAt(Date.now()); // 오늘 sync 완료 신호
+      // 2. 오늘 데이터 sync (앱 활성화마다)
+      await syncDate(today);
+      await AsyncStorage.setItem(LAST_SYNC_KEY, today);
+      setSyncedAt(Date.now()); // 오늘 sync 완료 신호
 
-    // 3. intervalDidEnd 플래그 처리 (보조 수단)
-    const syncNeededDate = await checkSyncNeeded();
-    if (syncNeededDate && syncNeededDate !== today && syncNeededDate !== lastSyncDate) {
-      await syncDate(syncNeededDate);
-      await clearSyncNeeded();
+      // 3. intervalDidEnd 플래그 처리 (보조 수단)
+      const syncNeededDate = await checkSyncNeeded();
+      if (syncNeededDate && syncNeededDate !== today && syncNeededDate !== lastSyncDate) {
+        await syncDate(syncNeededDate);
+        await clearSyncNeeded();
+      }
+    } finally {
+      syncInFlightRef.current = false;
     }
   }, [syncDate]);
 
   useEffect(() => {
     sync();
     const sub = AppState.addEventListener('change', state => {
-      if (state === 'active') sync();
+      if (state !== 'active') return;
+      if (Date.now() - lastSyncStartedAtRef.current < FOREGROUND_SYNC_COOLDOWN_MS) return;
+      sync();
     });
     return () => sub.remove();
   }, [sync]);

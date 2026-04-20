@@ -10,7 +10,7 @@ import Svg, { Circle, Text as SvgText } from 'react-native-svg';
 import { supabase } from '../../src/lib/supabase';
 import { AppHeader } from '../../src/components/AppHeader';
 import { AppTokenLabel } from '../../src/components/AppTokenLabel';
-import { isTokenKey } from '../../src/lib/screenTime';
+import { isTokenKey, getMonitoringStatus } from '../../src/lib/screenTime';
 
 type UsageItem = {
   app_name: string;
@@ -81,31 +81,37 @@ export default function ShareScreen() {
     const prevMonthStr = `${prevMonthDate.getFullYear()}-${String(prevMonthDate.getMonth() + 1).padStart(2, '0')}`;
     const prevDaysInMonth = new Date(prevMonthDate.getFullYear(), prevMonthDate.getMonth() + 1, 0).getDate();
 
-    const [settingsRes, usageRes, prevUsageRes] = await Promise.all([
+    const [settingsRes, usageRes, prevUsageRes, monitorStatus] = await Promise.all([
       supabase.from('user_settings').select('sleep_hours, work_hours, nickname').eq('user_id', user.id).single(),
       supabase.from('app_usage').select('*').eq('user_id', user.id)
         .gte('date', `${year}-01-01`).lte('date', `${year}-12-31`),
       supabase.from('app_usage').select('*').eq('user_id', user.id)
         .gte('date', `${prevMonthStr}-01`)
         .lte('date', `${prevMonthStr}-${String(prevDaysInMonth).padStart(2, '0')}`),
+      getMonitoringStatus(),
     ]);
+
+    const validLocalKeys = new Set(monitorStatus?.appList ?? []);
+    const filterStale = (list: UsageItem[]) =>
+      list.filter(u => !isTokenKey(u.app_name) || validLocalKeys.has(u.app_name));
 
     if (settingsRes.data) {
       setSleepHours(settingsRes.data.sleep_hours);
       setWorkHours(settingsRes.data.work_hours);
       if (settingsRes.data.nickname) setNickname(settingsRes.data.nickname);
     }
-    if (usageRes.data) setUsageList(usageRes.data);
+    if (usageRes.data) setUsageList(filterStale(usageRes.data));
 
     if (prevUsageRes.data && settingsRes.data) {
+      const filteredPrev = filterStale(prevUsageRes.data);
       const prev = calcNetRaw(
-        prevUsageRes.data,
+        filteredPrev,
         prevDaysInMonth,
         settingsRes.data.sleep_hours,
         settingsRes.data.work_hours
       );
       setPrevMonthNet(prev.net);
-      const prevLoss = prevUsageRes.data.filter((u: UsageItem) => u.category === '소비').reduce((s: number, u: UsageItem) => s + u.duration_minutes, 0);
+      const prevLoss = filteredPrev.filter((u: UsageItem) => u.category === '소비').reduce((s: number, u: UsageItem) => s + u.duration_minutes, 0);
       const prevDisposable = Math.round((24 - settingsRes.data.sleep_hours - settingsRes.data.work_hours) * prevDaysInMonth * 60);
       setPrevDefenseRate(Math.round((1 - prevLoss / Math.max(prevDisposable, 1)) * 100));
     }

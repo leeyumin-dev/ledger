@@ -163,6 +163,62 @@ export async function clearSyncNeeded(): Promise<void> {
   }
 }
 
+// 동기화 완료된 날짜의 UserDefaults 버퍼 삭제
+export async function clearDailyUsage(dateStr: string): Promise<void> {
+  if (!hasModule()) return;
+  try {
+    await ScreenTimeModule.clearDailyUsage(dateStr);
+  } catch (e) {
+    console.warn('[ScreenTime] clearDailyUsage error:', e);
+  }
+}
+
+// 로그아웃 시 디바이스 로컬 데이터 전체 삭제 (토큰맵, 사용량, 예산 등)
+export async function clearAllLocalData(): Promise<void> {
+  if (!hasModule()) return;
+  try {
+    await ScreenTimeModule.clearAllLocalData();
+  } catch (e) {
+    console.warn('[ScreenTime] clearAllLocalData error:', e);
+  }
+}
+
+// 예산 맵을 App Group UserDefaults에 동기화 (Extension 백그라운드 알림용)
+// budgetMap: { app_name → { budget: number, display?: string } }
+export async function syncBudgetMap(
+  budgetMap: Record<string, { budget: number; display?: string }>
+): Promise<void> {
+  if (!hasModule()) return;
+  try {
+    const json = JSON.stringify(budgetMap);
+    await ScreenTimeModule.syncBudgetMap(json);
+  } catch (e) {
+    console.warn('[ScreenTime] syncBudgetMap error:', e);
+  }
+}
+
+// 이름 맵 저장 (토큰 키 → 사용자 입력 이름) — 기존 맵과 머지됨
+export async function setNameMap(map: Record<string, string>): Promise<void> {
+  if (!hasModule()) return;
+  try {
+    await ScreenTimeModule.setNameMap(JSON.stringify(map));
+  } catch (e) {
+    console.warn('[ScreenTime] setNameMap error:', e);
+  }
+}
+
+// 이름 맵 읽기
+export async function getNameMap(): Promise<Record<string, string>> {
+  if (!hasModule()) return {};
+  try {
+    const json = await ScreenTimeModule.getNameMap() as string;
+    return JSON.parse(json) as Record<string, string>;
+  } catch (e) {
+    console.warn('[ScreenTime] getNameMap error:', e);
+    return {};
+  }
+}
+
 export function toLocalDateStr(date: Date = new Date()): string {
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, '0');

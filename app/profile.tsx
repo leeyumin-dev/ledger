@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity,
-  StyleSheet, ScrollView, Alert, Platform, AppState, ActivityIndicator, Modal,
+  StyleSheet, ScrollView, Alert, Platform, AppState, Modal,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -10,7 +11,7 @@ import {
   hasPermission, requestPermission,
   presentPickerForToken, confirmPendingTokenAuto,
   removeAppToken, startMonitoring,
-  getMonitoringStatus,
+  getMonitoringStatus, setNameMap, getNameMap,
 } from '../src/lib/screenTime';
 import { AppTokenLabel } from '../src/components/AppTokenLabel';
 
@@ -27,9 +28,14 @@ export default function ProfileScreen() {
 
   // 추적 앱 관리 모달
   const [appPickerVisible, setAppPickerVisible] = useState(false);
-  const [trackedApps, setTrackedApps] = useState<string[]>([]);
-  const [pickingApp, setPickingApp] = useState<string | null>(null);
-  const [editMode, setEditMode] = useState(false);
+  const [trackedApps, setTrackedApps] = useState<string[]>([]);  // token keys
+  const [nameMap, setNameMapState] = useState<Record<string, string>>({});
+  const [picking, setPicking] = useState(false);
+
+  // 이름 입력 모달 (앱 추가 시 필수)
+  const [pendingTokenKeys, setPendingTokenKeys] = useState<string[]>([]);
+  const [nameInputs, setNameInputs] = useState<Record<string, string>>({});
+  const [savingNames, setSavingNames] = useState(false);
 
   const appStateRef = useRef(AppState.currentState);
 
@@ -117,15 +123,19 @@ export default function ProfileScreen() {
   // 추적 앱 관리 모달 열기
   async function handleOpenAppPicker() {
     const status = await getMonitoringStatus();
-    setTrackedApps(status?.appList ?? []);
+    const keys = status?.appList ?? [];
+    setTrackedApps(keys);
+    const map = await getNameMap();
+    setNameMapState(map);
     setAppPickerVisible(true);
   }
 
   // 추적 중인 앱 제거
   async function handleRemoveApp(key: string) {
+    const displayName = nameMap[key] ?? key;
     Alert.alert(
       '추적 중지',
-      '이 앱 추적을 중지할까요?',
+      `'${displayName}' 추적을 중지할까요?\n\n과거 손익계산서에서 이 앱의 기록이 더 이상 표시되지 않아요.`,
       [
         { text: '취소', style: 'cancel' },
         {
@@ -139,7 +149,7 @@ export default function ProfileScreen() {
                 .from('app_categories')
                 .delete()
                 .eq('user_id', user.id)
-                .eq('app_name', key);
+                .eq('app_name', displayName);
             }
             const remaining = trackedApps.filter(a => a !== key);
             setTrackedApps(remaining);
@@ -150,40 +160,74 @@ export default function ProfileScreen() {
     );
   }
 
-  // "앱 추가" → picker → 다중 선택 지원, 중복 자동 방지
+  // "앱 추가" → picker → 이름 입력 (필수)
   async function handleAddApp() {
-    setPickingApp('앱 선택 중');
+    setPicking(true);
     const result = await presentPickerForToken();
-    setPickingApp(null);
+    setPicking(false);
     if (result === 'cancelled') return;
     if (result === 'category_only') {
       Alert.alert('개별 앱을 선택해주세요', '카테고리를 펼쳐서 추적할 앱을 개별로 선택해주세요.');
       return;
     }
 
-    const { data: { user } } = await supabase.auth.getUser();
-    let added = false;
-
+    const newKeys: string[] = [];
     for (let i = 0; i < result.count; i++) {
       const newKey = await confirmPendingTokenAuto(i);
-      if (!newKey) continue;
+      if (newKey) newKeys.push(newKey);
+    }
+
+    if (newKeys.length === 0) return;
+    setNameInputs({});
+    setPendingTokenKeys(newKeys);
+  }
+
+  async function saveNames() {
+    for (const key of pendingTokenKeys) {
+      if (!nameInputs[key]?.trim()) {
+        Alert.alert('이름 필요', '모든 앱의 이름을 입력해주세요.');
+        return;
+      }
+    }
+    const newNames = pendingTokenKeys.map(k => nameInputs[k].trim());
+    const existingNames = trackedApps.map(k => nameMap[k] ?? k);
+    const duplicate = newNames.find(n => existingNames.includes(n));
+    if (duplicate) {
+      Alert.alert('중복', `'${duplicate}'는 이미 추가된 앱이에요.`);
+      return;
+    }
+
+    setSavingNames(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      const newNameMap: Record<string, string> = {};
+      pendingTokenKeys.forEach(k => { newNameMap[k] = nameInputs[k].trim(); });
 
       if (user) {
         await supabase.from('app_categories').upsert(
-          [{ user_id: user.id, app_name: newKey, bundle_id: '', category: '소비', budget_minutes: 0 }],
+          pendingTokenKeys.map(key => ({
+            user_id: user.id,
+            app_name: newNameMap[key],
+            bundle_id: '',
+            category: '소비',
+            budget_minutes: 0,
+            goal_minutes: 0,
+          })),
           { onConflict: 'user_id,app_name' }
         );
       }
-      setTrackedApps(prev => prev.includes(newKey) ? prev : [...prev, newKey]);
-      added = true;
+      await setNameMap(newNameMap);
+      setNameMapState(prev => ({ ...prev, ...newNameMap }));
+      setTrackedApps(prev => {
+        const next = [...prev];
+        pendingTokenKeys.forEach(k => { if (!next.includes(k)) next.push(k); });
+        return next;
+      });
+      await startMonitoring();
+    } finally {
+      setSavingNames(false);
+      setPendingTokenKeys([]);
     }
-
-    if (added) await startMonitoring();
-  }
-
-  function handleCloseAppPicker() {
-    setAppPickerVisible(false);
-    setEditMode(false);
   }
 
   async function handleLogout() {
@@ -338,7 +382,7 @@ export default function ProfileScreen() {
           style={styles.navBtn}
           onPress={() => router.push('/category-settings')}
         >
-          <Text style={styles.navBtnText}>앱 카테고리 분류</Text>
+          <Text style={styles.navBtnText}>소비 · 투자 설정</Text>
           <Text style={styles.navBtnArrow}>›</Text>
         </TouchableOpacity>
 
@@ -368,29 +412,16 @@ export default function ProfileScreen() {
         visible={appPickerVisible}
         animationType="slide"
         presentationStyle="pageSheet"
-        onRequestClose={handleCloseAppPicker}
+        onRequestClose={() => setAppPickerVisible(false)}
       >
         <View style={styles.modalContainer}>
-          {/* 모달 헤더 */}
           <View style={styles.modalHeader}>
-            <TouchableOpacity onPress={() => setEditMode(e => !e)} style={{ width: 40 }}>
-              <Text style={[styles.modalEdit, editMode && styles.modalEditActive]}>
-                {editMode ? '완료' : '편집'}
-              </Text>
-            </TouchableOpacity>
+            <View style={{ width: 40 }} />
             <Text style={styles.modalTitle}>추적 앱 관리</Text>
-            <TouchableOpacity onPress={handleCloseAppPicker}>
+            <TouchableOpacity onPress={() => setAppPickerVisible(false)}>
               <Text style={styles.modalDone}>닫기</Text>
             </TouchableOpacity>
           </View>
-
-          {/* 피커 진행 중 배너 */}
-          {pickingApp && (
-            <View style={styles.pickingBanner}>
-              <ActivityIndicator color="#e8410a" size="small" style={{ marginRight: 10 }} />
-              <Text style={styles.pickingBannerText}>{pickingApp}…</Text>
-            </View>
-          )}
 
           <ScrollView contentContainerStyle={styles.modalContent}>
             {trackedApps.length === 0 ? (
@@ -402,31 +433,23 @@ export default function ProfileScreen() {
                     key={key}
                     style={[styles.trackedRow, i < trackedApps.length - 1 && styles.trackedRowBorder]}
                   >
-                    <AppTokenLabel
-                      tokenKey={key}
-                      fontSize={13}
-                      color="#f0ede8"
-                      style={{ height: 20, flex: 1 }}
-                    />
-                    {editMode && (
-                      <TouchableOpacity
-                        onPress={() => handleRemoveApp(key)}
-                        disabled={!!pickingApp}
-                        style={styles.removeBtn}
-                      >
-                        <Text style={styles.removeBtnText}>✕</Text>
-                      </TouchableOpacity>
-                    )}
+                    <Text style={styles.trackedName}>{nameMap[key] ?? key}</Text>
+                    <TouchableOpacity
+                      onPress={() => handleRemoveApp(key)}
+                      disabled={picking}
+                      style={styles.removeBtn}
+                    >
+                      <Text style={styles.removeBtnText}>✕</Text>
+                    </TouchableOpacity>
                   </View>
                 ))}
               </View>
             )}
 
-            {/* 앱 추가 버튼 */}
             <TouchableOpacity
-              style={styles.addBtn}
+              style={[styles.addBtn, picking && { opacity: 0.4 }]}
               onPress={handleAddApp}
-              disabled={!!pickingApp}
+              disabled={picking}
             >
               <Text style={styles.addBtnText}>+ 앱 추가</Text>
             </TouchableOpacity>
@@ -434,6 +457,65 @@ export default function ProfileScreen() {
             <View style={{ height: 40 }} />
           </ScrollView>
         </View>
+      </Modal>
+
+      {/* 앱 이름 입력 모달 (필수) */}
+      <Modal
+        visible={pendingTokenKeys.length > 0}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => {}}
+      >
+        <KeyboardAvoidingView
+          style={{ flex: 1, backgroundColor: '#0f0f0f' }}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <View style={styles.modalHeader}>
+            <View style={{ width: 40 }} />
+            <Text style={styles.modalTitle}>앱 이름 입력</Text>
+            <View style={{ width: 40 }} />
+          </View>
+
+          <Text style={styles.nicknameModalHint}>
+            앱 이름을 직접 입력해주세요{'\n'}
+            <Text style={{ color: '#5a5754' }}>예: 유튜브, 인스타그램</Text>
+          </Text>
+
+          <ScrollView contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 32 }}>
+            {pendingTokenKeys.map((key, i) => (
+              <View key={key} style={styles.nicknameRow}>
+                <AppTokenLabel
+                  tokenKey={key}
+                  fontSize={18}
+                  iconOnly
+                  style={{ width: 30, height: 30, marginRight: 12 }}
+                />
+                <TextInput
+                  style={[styles.nicknameRowInput, { flex: 1 }]}
+                  placeholder="앱 이름 입력 (필수)"
+                  placeholderTextColor="#3a3836"
+                  value={nameInputs[key] ?? ''}
+                  onChangeText={text => setNameInputs(prev => ({ ...prev, [key]: text }))}
+                  maxLength={20}
+                  returnKeyType={i < pendingTokenKeys.length - 1 ? 'next' : 'done'}
+                  autoFocus={i === 0}
+                />
+              </View>
+            ))}
+          </ScrollView>
+
+          <View style={styles.nicknameModalActions}>
+            <TouchableOpacity
+              style={[styles.nicknameSaveBtn, savingNames && { opacity: 0.5 }]}
+              onPress={saveNames}
+              disabled={savingNames}
+            >
+              <Text style={styles.nicknameSaveText}>
+                {savingNames ? '저장 중...' : '저장하기'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );
@@ -743,6 +825,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     minHeight: 52,
   },
+  trackedName: {
+    fontFamily: 'GeistMono_400Regular',
+    fontSize: 13,
+    color: '#f0ede8',
+    flex: 1,
+  },
   trackedRowBorder: {
     borderBottomWidth: 0.5,
     borderBottomColor: '#2a2826',
@@ -768,5 +856,79 @@ const styles = StyleSheet.create({
     fontFamily: 'GeistMono_400Regular',
     fontSize: 14,
     color: '#f0ede8',
+  },
+
+  inlineNicknameInput: {
+    fontFamily: 'GeistMono_400Regular',
+    fontSize: 11,
+    color: '#9a9690',
+    padding: 0,
+    borderBottomWidth: 0.5,
+    borderBottomColor: '#2a2826',
+    paddingBottom: 2,
+  },
+  inlineNicknameLabel: {
+    fontFamily: 'GeistMono_400Regular',
+    fontSize: 11,
+    color: '#5a5754',
+  },
+
+  // 별명 입력 모달
+  nicknameModalHint: {
+    fontFamily: 'GeistMono_400Regular',
+    fontSize: 11,
+    color: '#9a9690',
+    lineHeight: 18,
+    paddingHorizontal: 24,
+    paddingBottom: 20,
+  },
+  nicknameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 14,
+    borderBottomWidth: 0.5,
+    borderBottomColor: '#2a2826',
+  },
+  nicknameRowInput: {
+    fontFamily: 'GeistMono_400Regular',
+    fontSize: 13,
+    color: '#f0ede8',
+    flex: 1,
+    textAlign: 'right',
+    padding: 0,
+  },
+  nicknameModalActions: {
+    flexDirection: 'row',
+    gap: 12,
+    paddingHorizontal: 24,
+    paddingVertical: 20,
+    borderTopWidth: 0.5,
+    borderTopColor: '#2a2826',
+  },
+  nicknameSkipBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#2a2826',
+    alignItems: 'center',
+  },
+  nicknameSkipText: {
+    fontFamily: 'GeistMono_400Regular',
+    fontSize: 13,
+    color: '#5a5754',
+  },
+  nicknameSaveBtn: {
+    flex: 2,
+    paddingVertical: 14,
+    borderRadius: 10,
+    backgroundColor: '#f0ede8',
+    alignItems: 'center',
+  },
+  nicknameSaveText: {
+    fontFamily: 'GeistMono_500Medium',
+    fontSize: 13,
+    color: '#0f0f0f',
   },
 });

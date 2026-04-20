@@ -8,9 +8,8 @@ import { useFocusEffect, router } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../../src/lib/supabase';
 import { AppHeader } from '../../src/components/AppHeader';
-import { useSyncedAt } from '../../src/lib/SyncContext';
-import { AppTokenLabel } from '../../src/components/AppTokenLabel';
-import { isTokenKey, toLocalDateStr } from '../../src/lib/screenTime';
+import { useSyncedAt, useSync } from '../../src/lib/SyncContext';
+import { toLocalDateStr, getMonitoringStatus } from '../../src/lib/screenTime';
 
 type AppUsage = {
     id: string;
@@ -62,11 +61,14 @@ export default function TodayScreen() {
     const [categoryList, setCategoryList] = useState<{ app_name: string, category: string }[]>([]);
     const [autoTrackedApps, setAutoTrackedApps] = useState<Set<string>>(new Set());
     const [nudgeVisible, setNudgeVisible] = useState(false);
+    const [prevNetMinutes, setPrevNetMinutes] = useState<number | null>(null);
 
     const syncedAt = useSyncedAt();
+    const sync = useSync();
     const isFocused = useRef(false);
 
     const today = toLocalDateStr();
+    const yesterday = toLocalDateStr(new Date(Date.now() - 86400000));
     const todayLabel = new Date().toLocaleDateString('ko-KR', {
         year: 'numeric', month: 'long', day: 'numeric', weekday: 'long'
     });
@@ -74,9 +76,10 @@ export default function TodayScreen() {
     useFocusEffect(
         useCallback(() => {
             isFocused.current = true;
+            sync();        // 포커스 시 최신 데이터 동기화
             loadData();
             return () => { isFocused.current = false; };
-        }, [])
+        }, [sync])
     );
 
     useEffect(() => {
@@ -89,9 +92,10 @@ export default function TodayScreen() {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return;
 
-        const [settingsRes, usageRes, categoryRes] = await Promise.all([
+        const [settingsRes, usageRes, prevUsageRes, categoryRes] = await Promise.all([
             supabase.from('user_settings').select('sleep_hours, work_hours').eq('user_id', user.id).single(),
             supabase.from('app_usage').select('*').eq('user_id', user.id).eq('date', today),
+            supabase.from('app_usage').select('duration_minutes, category').eq('user_id', user.id).eq('date', yesterday),
             supabase.from('app_categories').select('app_name, category, budget_minutes').eq('user_id', user.id),
         ]);
 
@@ -100,28 +104,28 @@ export default function TodayScreen() {
             setWorkHours(settingsRes.data.work_hours);
         }
 
+        const sl = settingsRes.data?.sleep_hours ?? 7.5;
+        const wk = settingsRes.data?.work_hours ?? 8.0;
+        const prevUsage = prevUsageRes.data ?? [];
+        if (prevUsage.length > 0) {
+            const pLoss = prevUsage.filter(u => u.category === '소비').reduce((s, u) => s + u.duration_minutes, 0);
+            const pInvest = prevUsage.filter(u => u.category === '투자').reduce((s, u) => s + u.duration_minutes, 0);
+            const pEssential = prevUsage.filter(u => u.category === '필수').reduce((s, u) => s + u.duration_minutes, 0);
+            setPrevNetMinutes(Math.round((24 - sl - wk) * 60) - pLoss - pEssential + pInvest);
+        } else {
+            setPrevNetMinutes(null);
+        }
+
         const usageData = usageRes.data ?? [];
         const categoryData = categoryRes.data ?? [];
 
         setUsageList(usageData);
-        // 수동 입력 자동완성용 — 토큰 키 제외
-        setCategoryList(categoryData
-            .filter(c => !isTokenKey(c.app_name))
-            .map(c => ({ app_name: c.app_name, category: c.category }))
-        );
+        setCategoryList(categoryData.map(c => ({ app_name: c.app_name, category: c.category })));
 
         const autoApps = new Set<string>(
             usageData.filter(u => u.source === 'auto').map(u => u.app_name)
         );
         setAutoTrackedApps(autoApps);
-
-        // 넛지: 토큰 앱이 있고 아직 안 본 경우 표시
-        const hasTokenApps = categoryData.some(c => isTokenKey(c.app_name));
-        if (hasTokenApps) {
-            const nudgeKey = `ledger_category_nudge_${user.id}`;
-            const seen = await AsyncStorage.getItem(nudgeKey);
-            if (!seen) setNudgeVisible(true);
-        }
 
         const warnings = categoryData
             .filter(c => c.budget_minutes > 0)
@@ -236,6 +240,16 @@ export default function TodayScreen() {
                 <View style={styles.header}>
                     <Text style={styles.headerSub}>{todayLabel}</Text>
                     <Text style={styles.headerTitle}>손익계산서</Text>
+                    {syncedAt > 0 && (
+                        <Text style={styles.syncedAtLabel}>
+                            {(() => {
+                                const diff = Date.now() - syncedAt;
+                                if (diff < 60_000) return '방금 동기화됨';
+                                if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}분 전 동기화됨`;
+                                return `${Math.floor(diff / 3_600_000)}시간 전 동기화됨`;
+                            })()}
+                        </Text>
+                    )}
                 </View>
 
                 {/* 카테고리 설정 넛지 */}
@@ -267,16 +281,7 @@ export default function TodayScreen() {
                         ]}>
                             <View style={styles.warnMain}>
                                 <View style={[styles.warnDot, { backgroundColor: color }]} />
-                                {isTokenKey(first.app_name) ? (
-                                    <AppTokenLabel
-                                        tokenKey={first.app_name}
-                                        color={color}
-                                        fontSize={11}
-                                        style={{ width: 18, height: 18 }}
-                                    />
-                                ) : (
-                                    <Text style={[styles.warnName, { color }]}>{first.app_name}</Text>
-                                )}
+                                <Text style={[styles.warnName, { color }]}>{first.app_name}</Text>
                                 <Text style={[styles.warnStatus, { color }]}>{status}</Text>
                                 <Text style={[styles.warnPct, { color }]}>
                                     {fmt(first.used_minutes)} / {fmt(first.budget_minutes)} · {pct}%
@@ -308,16 +313,7 @@ export default function TodayScreen() {
                                         return (
                                             <View key={w.app_name} style={styles.warnExtraItem}>
                                                 <View style={[styles.warnDot, { backgroundColor: c }]} />
-                                                {isTokenKey(w.app_name) ? (
-                                                    <AppTokenLabel
-                                                        tokenKey={w.app_name}
-                                                        color={c}
-                                                        fontSize={10}
-                                                        style={{ width: 16, height: 16 }}
-                                                    />
-                                                ) : (
-                                                    <Text style={[styles.warnExtraName, { color: c }]}>{w.app_name}</Text>
-                                                )}
+                                                <Text style={[styles.warnExtraName, { color: c }]}>{w.app_name}</Text>
                                                 <Text style={[styles.warnExtraStatus, { color: c }]}>{s}</Text>
                                                 <Text style={[styles.warnExtraPct, { color: c }]}>
                                                     {fmt(w.used_minutes)} / {fmt(w.budget_minutes)} · {p}%
@@ -346,10 +342,7 @@ export default function TodayScreen() {
                 {usageList.filter(u => u.category === '소비').map(u => (
                     <TouchableOpacity key={u.id} onLongPress={() => deleteUsage(u.id, u.source === 'auto')} delayLongPress={500} activeOpacity={0.7}>
                         <Row
-                            label={isTokenKey(u.app_name)
-                                ? <AppTokenLabel tokenKey={u.app_name} color="#9a9690" fontSize={13} style={{ flex: 1, height: 26 }} />
-                                : u.app_name
-                            }
+                            label={u.app_name}
                             value={`${Math.floor(u.duration_minutes / 60)}h ${u.duration_minutes % 60}m`}
                             indent loss auto={u.source === 'auto'}
                         />
@@ -364,10 +357,7 @@ export default function TodayScreen() {
                 {usageList.filter(u => u.category === '투자').map(u => (
                     <TouchableOpacity key={u.id} onLongPress={() => deleteUsage(u.id, u.source === 'auto')} delayLongPress={500} activeOpacity={0.7}>
                         <Row
-                            label={isTokenKey(u.app_name)
-                                ? <AppTokenLabel tokenKey={u.app_name} color="#9a9690" fontSize={13} style={{ flex: 1, height: 26 }} />
-                                : u.app_name
-                            }
+                            label={u.app_name}
                             value={`${Math.floor(u.duration_minutes / 60)}h ${u.duration_minutes % 60}m`}
                             indent profit auto={u.source === 'auto'}
                         />
@@ -382,10 +372,7 @@ export default function TodayScreen() {
                 {usageList.filter(u => u.category === '필수').map(u => (
                     <TouchableOpacity key={u.id} onLongPress={() => deleteUsage(u.id, u.source === 'auto')} delayLongPress={500} activeOpacity={0.7}>
                         <Row
-                            label={isTokenKey(u.app_name)
-                                ? <AppTokenLabel tokenKey={u.app_name} color="#9a9690" fontSize={13} style={{ flex: 1, height: 26 }} />
-                                : u.app_name
-                            }
+                            label={u.app_name}
                             value={`${Math.floor(u.duration_minutes / 60)}h ${u.duration_minutes % 60}m`}
                             indent muted auto={u.source === 'auto'}
                         />
@@ -408,6 +395,19 @@ export default function TodayScreen() {
                     <Text style={[styles.verdictValue, { color: isProfit ? '#4ade80' : '#f87171' }]}>
                         {isProfit ? '＋' : '－'} {netHours}h {netMins}m
                     </Text>
+                    {prevNetMinutes !== null && (() => {
+                        const diff = netMinutes - prevNetMinutes;
+                        const diffAbs = Math.abs(diff);
+                        const dh = Math.floor(diffAbs / 60);
+                        const dm = diffAbs % 60;
+                        const improved = diff > 0;
+                        const same = diff === 0;
+                        return (
+                            <Text style={[styles.verdictDiff, { color: same ? '#5a5754' : improved ? 'rgba(74,222,128,0.6)' : 'rgba(248,113,133,0.6)' }]}>
+                                {same ? '전일과 동일' : `전일 대비 ${improved ? '▲' : '▼'} ${dh > 0 ? `${dh}h ` : ''}${dm}m`}
+                            </Text>
+                        );
+                    })()}
                 </View>
 
                 <Text style={styles.longPressHint}>항목을 길게 누르면 삭제돼요</Text>
@@ -431,14 +431,8 @@ export default function TodayScreen() {
                                     <View style={styles.autoTrackNotice}>
                                         <Text style={styles.autoTrackNoticeLabel}>자동 수집 중 — 추가 불필요</Text>
                                         <View style={styles.autoTrackNoticeList}>
-                                            {[...autoTrackedApps].map(key => (
-                                                <AppTokenLabel
-                                                    key={key}
-                                                    tokenKey={key}
-                                                    color="#4ade80"
-                                                    fontSize={12}
-                                                    style={{ height: 20, marginBottom: 4 }}
-                                                />
+                                            {[...autoTrackedApps].map(name => (
+                                                <Text key={name} style={{ fontFamily: 'GeistMono_400Regular', fontSize: 12, color: '#4ade80', marginBottom: 2 }}>{name}</Text>
                                             ))}
                                         </View>
                                     </View>
@@ -556,6 +550,7 @@ const styles = StyleSheet.create({
     header: { paddingTop: 20, paddingBottom: 24 },
     headerSub: { fontFamily: 'GeistMono_400Regular', fontSize: 11, color: '#5a5754', letterSpacing: 1, marginBottom: 6 },
     headerTitle: { fontFamily: 'GeistMono_500Medium', fontSize: 28, color: '#f0ede8', letterSpacing: -0.5 },
+    syncedAtLabel: { fontFamily: 'GeistMono_400Regular', fontSize: 10, color: '#3a3836', marginTop: 6 },
     thickDivider: { height: 1.5, backgroundColor: '#3a3836', marginVertical: 12 },
     thinDivider: { height: 0.5, backgroundColor: '#2a2826', marginVertical: 8 },
     sectionLabel: { fontFamily: 'GeistMono_400Regular', fontSize: 10, color: '#5a5754', letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 10 },
@@ -575,6 +570,7 @@ const styles = StyleSheet.create({
     verdictProfit: { backgroundColor: 'rgba(74,222,128,0.1)', borderColor: 'rgba(74,222,128,0.2)' },
     verdictLabel: { fontFamily: 'GeistMono_400Regular', fontSize: 10, letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 8 },
     verdictValue: { fontFamily: 'GeistMono_500Medium', fontSize: 32, letterSpacing: -0.5 },
+    verdictDiff: { fontFamily: 'GeistMono_400Regular', fontSize: 11, marginTop: 8 },
     longPressHint: { fontFamily: 'GeistMono_400Regular', fontSize: 10, color: '#3a3836', textAlign: 'center', marginTop: 16 },
     fab: { position: 'absolute', bottom: 32, right: 24, width: 52, height: 52, borderRadius: 26, backgroundColor: '#e8410a', justifyContent: 'center', alignItems: 'center' },
     fabText: { fontSize: 24, color: 'white', lineHeight: 28 },

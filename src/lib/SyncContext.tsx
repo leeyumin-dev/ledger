@@ -1,8 +1,18 @@
 import { createContext, useContext } from 'react';
 
-// sync 완료 시각 (Date.now() 값). 변경될 때마다 오늘 화면이 loadData()를 재호출.
-export const SyncContext = createContext(0);
+type SyncContextValue = {
+  syncedAt: number;       // 마지막 동기화 완료 시각 (Date.now())
+  sync: () => void;       // 수동 동기화 트리거
+};
+
+const defaultValue: SyncContextValue = { syncedAt: 0, sync: () => {} };
+
+export const SyncContext = createContext<SyncContextValue>(defaultValue);
 
 export function useSyncedAt() {
-  return useContext(SyncContext);
+  return useContext(SyncContext).syncedAt;
+}
+
+export function useSync() {
+  return useContext(SyncContext).sync;
 }

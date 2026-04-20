@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { LineChart } from 'react-native-gifted-charts';
@@ -6,6 +6,7 @@ import { supabase } from '../../src/lib/supabase';
 import { AppHeader } from '../../src/components/AppHeader';
 import { AppTokenLabel } from '../../src/components/AppTokenLabel';
 import { isTokenKey } from '../../src/lib/screenTime';
+import { useSyncedAt } from '../../src/lib/SyncContext';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 
@@ -20,30 +21,46 @@ const RANGE_OPTIONS = [
 
 export default function TrendsScreen() {
     const [rawData, setRawData] = useState<RawRecord[]>([]);
+    const [goals, setGoals] = useState<Record<string, number>>({});
     const [selectedApp, setSelectedApp] = useState<string>('');
     const [rangeWeeks, setRangeWeeks] = useState<4 | 8 | 12 | 26>(8);
+    const syncedAt = useSyncedAt();
+    const isFocused = useRef(false);
 
     useFocusEffect(
         useCallback(() => {
+            isFocused.current = true;
             loadTrends();
+            return () => { isFocused.current = false; };
         }, [])
     );
+
+    // 동기화 완료 후 재로드 (홈 화면과 동일 패턴)
+    useEffect(() => {
+        if (syncedAt > 0 && isFocused.current) {
+            loadTrends();
+        }
+    }, [syncedAt]);
 
     async function loadTrends() {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return;
 
-        const { data } = await supabase
-            .from('app_usage')
-            .select('app_name, date, duration_minutes, category')
-            .eq('user_id', user.id)
-            .order('date', { ascending: true });
+        const [usageRes, categoriesRes] = await Promise.all([
+            supabase.from('app_usage').select('app_name, date, duration_minutes, category').eq('user_id', user.id).order('date', { ascending: true }),
+            supabase.from('app_categories').select('app_name, goal_minutes').eq('user_id', user.id),
+        ]);
 
-        if (!data || data.length === 0) return;
-        setRawData(data);
+        if (!usageRes.data || usageRes.data.length === 0) return;
+        setRawData(usageRes.data);
 
-        // 첫 앱 선택
-        const apps = [...new Set(data.map(d => d.app_name))];
+        if (categoriesRes.data) {
+            const goalMap: Record<string, number> = {};
+            categoriesRes.data.forEach(c => { goalMap[c.app_name] = c.goal_minutes ?? 0; });
+            setGoals(goalMap);
+        }
+
+        const apps = [...new Set(usageRes.data.map(d => d.app_name))];
         if (apps.length > 0) setSelectedApp(prev => prev || apps[0]);
     }
 
@@ -53,9 +70,17 @@ export default function TrendsScreen() {
 
     function getWeekLabel(dateStr: string) {
         const date = new Date(dateStr + 'T00:00:00');
-        const month = date.getMonth() + 1;
-        const weekNum = Math.ceil(date.getDate() / 7);
+        const day = date.getDay();
+        const diff = day === 0 ? -6 : 1 - day;
+        const monday = new Date(date);
+        monday.setDate(date.getDate() + diff);
+        const month = monday.getMonth() + 1;
+        const weekNum = Math.ceil(monday.getDate() / 7);
         return `${month}월 ${weekNum}주`;
+    }
+
+    function getCurrentWeekLabel() {
+        return getWeekLabel(toLocalStr(new Date()));
     }
 
     function getRecentWeeks(count: number): string[] {
@@ -69,7 +94,6 @@ export default function TrendsScreen() {
         return [...new Set(weeks)];
     }
 
-    // 범위 변경 시 선택 앱 유지하면서 데이터 재계산
     const { trends, allApps } = useMemo(() => {
         if (rawData.length === 0) return { trends: [], allApps: [] };
 
@@ -108,11 +132,22 @@ export default function TrendsScreen() {
     })) ?? [];
 
     const isLossApp = selected?.category === '소비';
+    const isInvestApp = selected?.category === '투자';
     const lineColor = isLossApp ? '#f87171' : '#4ade80';
-    const maxValue = Math.ceil(Math.max(...chartData.map(d => d.value), 1) + 1);
+    const goalMinutes = selected ? (goals[selected.app_name] ?? 0) : 0;
+    const goalHours = goalMinutes / 60;
+    const maxChartVal = Math.ceil(Math.max(...chartData.map(d => d.value), goalHours, 1) + 1);
 
     const totalMinutes = selected?.data.reduce((s, d) => s + d.minutes, 0) ?? 0;
     const avgMinutes = totalMinutes / rangeWeeks;
+
+    // 이번 주 달성률
+    const currentWeekLabel = getCurrentWeekLabel();
+    const currentWeekData = selected?.data.find(d => d.week === currentWeekLabel);
+    const currentWeekMinutes = currentWeekData?.minutes ?? 0;
+    const achievementPct = goalMinutes > 0 ? Math.round((currentWeekMinutes / goalMinutes) * 100) : null;
+    // 투자: 목표 이상 사용 = 달성, 소비: 한도 이하 사용 = 달성
+    const achieved = achievementPct !== null && (isLossApp ? achievementPct <= 100 : achievementPct >= 100);
 
     return (
         <View style={{ flex: 1, backgroundColor: '#0f0f0f' }}>
@@ -147,29 +182,41 @@ export default function TrendsScreen() {
                     {/* 앱 선택 */}
                     <Text style={styles.sectionLabel}>앱 선택</Text>
                     <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.appScroll}>
-                        {trends.map(t => (
-                            <TouchableOpacity
-                                key={t.app_name}
-                                style={[
-                                    styles.appBtn,
-                                    selectedApp === t.app_name && (t.category === '소비' ? styles.appBtnLoss : styles.appBtnInvest)
-                                ]}
-                                onPress={() => setSelectedApp(t.app_name)}
-                            >
-                                {isTokenKey(t.app_name) ? (
-                                    <AppTokenLabel
-                                        tokenKey={t.app_name}
-                                        color={selectedApp === t.app_name ? '#ffffff' : '#5a5754'}
-                                        fontSize={12}
-                                        style={{ width: 130, height: 20 }}
-                                    />
-                                ) : (
-                                    <Text style={[styles.appBtnText, selectedApp === t.app_name && styles.appBtnTextActive]}>
-                                        {t.app_name}
-                                    </Text>
-                                )}
-                            </TouchableOpacity>
-                        ))}
+                        {trends.map(t => {
+                            const isSelected = selectedApp === t.app_name;
+                            const ringColor = t.category === '소비' ? '#f87171' : '#4ade80';
+                            return (
+                                <TouchableOpacity
+                                    key={t.app_name}
+                                    style={styles.appIconBtn}
+                                    onPress={() => setSelectedApp(t.app_name)}
+                                    activeOpacity={0.7}
+                                >
+                                    {isTokenKey(t.app_name) ? (
+                                        <View style={[
+                                            styles.appIconWrap,
+                                            isSelected && { borderColor: ringColor, borderWidth: 2 }
+                                        ]}>
+                                            <AppTokenLabel
+                                                tokenKey={t.app_name}
+                                                fontSize={20}
+                                                iconOnly
+                                                style={{ width: 32, height: 32 }}
+                                            />
+                                        </View>
+                                    ) : (
+                                        <View style={[
+                                            styles.appTextBtn,
+                                            isSelected && (t.category === '소비' ? styles.appBtnLoss : styles.appBtnInvest)
+                                        ]}>
+                                            <Text style={[styles.appBtnText, isSelected && styles.appBtnTextActive]}>
+                                                {t.app_name}
+                                            </Text>
+                                        </View>
+                                    )}
+                                </TouchableOpacity>
+                            );
+                        })}
                     </ScrollView>
 
                     {/* 요약 스탯 */}
@@ -181,20 +228,54 @@ export default function TrendsScreen() {
                                     {Math.floor(totalMinutes / 60)}h {totalMinutes % 60}m
                                 </Text>
                             </View>
-                            <View style={[styles.statDivider]} />
+                            <View style={styles.statDivider} />
                             <View style={styles.statItem}>
                                 <Text style={styles.statLabel}>주평균</Text>
                                 <Text style={[styles.statVal, { color: lineColor }]}>
                                     {Math.floor(avgMinutes / 60)}h {Math.round(avgMinutes % 60)}m
                                 </Text>
                             </View>
-                            <View style={[styles.statDivider]} />
-                            <View style={styles.statItem}>
-                                <Text style={styles.statLabel}>카테고리</Text>
-                                <Text style={[styles.statVal, { color: lineColor }]}>
-                                    {selected.category}
+                            <View style={styles.statDivider} />
+                            {(isInvestApp || isLossApp) && goalMinutes > 0 ? (
+                                <View style={styles.statItem}>
+                                    <Text style={styles.statLabel}>{isLossApp ? '이번 주 소비율' : '이번 주 달성률'}</Text>
+                                    <Text style={[styles.statVal, { color: achieved ? '#4ade80' : '#f87171' }]}>
+                                        {achievementPct}%
+                                    </Text>
+                                </View>
+                            ) : (
+                                <View style={styles.statItem}>
+                                    <Text style={styles.statLabel}>카테고리</Text>
+                                    <Text style={[styles.statVal, { color: lineColor }]}>
+                                        {selected.category}
+                                    </Text>
+                                </View>
+                            )}
+                        </View>
+                    )}
+
+                    {/* 이번 주 목표 달성 배지 */}
+                    {(isInvestApp || isLossApp) && goalMinutes > 0 && (
+                        <View style={[
+                            styles.goalBadge,
+                            achieved ? styles.goalBadgeAchieved : (isLossApp ? styles.goalBadgeWarning : styles.goalBadgePending)
+                        ]}>
+                            <Text style={[styles.goalBadgeIcon]}>{achieved ? '🏆' : (isLossApp ? '⚠️' : '🎯')}</Text>
+                            <View style={{ flex: 1 }}>
+                                <Text style={[styles.goalBadgeTitle, { color: achieved ? '#4ade80' : (isLossApp ? '#f87171' : '#f0ede8') }]}>
+                                    {achieved
+                                        ? (isLossApp ? '이번 주 한도 달성!' : '이번 주 목표 달성!')
+                                        : (isLossApp ? '이번 주 한도 초과' : '이번 주 목표 진행 중')}
+                                </Text>
+                                <Text style={styles.goalBadgeSub}>
+                                    {Math.floor(currentWeekMinutes / 60)}h {currentWeekMinutes % 60}m / {isLossApp ? '한도' : '목표'} {Math.floor(goalMinutes / 60)}h {goalMinutes % 60}m
                                 </Text>
                             </View>
+                            {achievementPct !== null && (
+                                <Text style={[styles.goalBadgePct, { color: achieved ? '#4ade80' : (isLossApp ? '#f87171' : '#9a9690') }]}>
+                                    {achievementPct}%
+                                </Text>
+                            )}
                         </View>
                     )}
 
@@ -203,11 +284,18 @@ export default function TrendsScreen() {
                         <View style={styles.chartBox}>
                             <View style={styles.chartHeader}>
                                 {isTokenKey(selected.app_name) ? (
-                                    <AppTokenLabel tokenKey={selected.app_name} color="#f0ede8" fontSize={14} style={{ height: 20 }} />
+                                    <AppTokenLabel key={selected.app_name} tokenKey={selected.app_name} color="#f0ede8" fontSize={14} style={{ flex: 1, height: 22 }} />
                                 ) : (
                                     <Text style={styles.chartTitle}>{selected.app_name}</Text>
                                 )}
-                                <Text style={styles.chartSub}>최근 {RANGE_OPTIONS.find(o => o.weeks === rangeWeeks)?.label} · 시간(h)</Text>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                                    {goalMinutes > 0 && (
+                                        <Text style={[styles.goalChipText, { color: isLossApp ? 'rgba(248,113,113,0.6)' : 'rgba(74,222,128,0.6)' }]}>
+                                            {isLossApp ? `한도 ${Math.floor(goalMinutes / 60)}h/주` : `목표 ${Math.floor(goalMinutes / 60)}h/주`}
+                                        </Text>
+                                    )}
+                                    <Text style={styles.chartSub}>최근 {RANGE_OPTIONS.find(o => o.weeks === rangeWeeks)?.label} · 시간(h)</Text>
+                                </View>
                             </View>
                             <LineChart
                                 data={chartData}
@@ -227,11 +315,21 @@ export default function TrendsScreen() {
                                 yAxisTextStyle={{ color: '#5a5754', fontSize: 10, fontFamily: 'GeistMono_400Regular' }}
                                 xAxisLabelTextStyle={{ color: '#5a5754', fontSize: 9, fontFamily: 'GeistMono_400Regular' }}
                                 noOfSections={4}
-                                maxValue={maxValue}
+                                maxValue={maxChartVal}
                                 roundToDigits={1}
                                 backgroundColor="#161614"
                                 textColor={lineColor}
                                 textFontSize={10}
+                                showReferenceLine1={goalMinutes > 0}
+                                referenceLine1Position={goalHours}
+                                referenceLine1Config={{
+                                    color: isLossApp ? 'rgba(248,113,113,0.4)' : 'rgba(74,222,128,0.4)',
+                                    thickness: 1,
+                                    width: SCREEN_WIDTH - 120,
+                                    type: 'dashed',
+                                    dashWidth: 4,
+                                    dashGap: 4,
+                                }}
                             />
                         </View>
                     )}
@@ -242,6 +340,9 @@ export default function TrendsScreen() {
                         {selected?.data.filter(d => d.minutes > 0).slice().reverse().map((d, i) => {
                             const maxMin = Math.max(...(selected?.data.map(x => x.minutes) ?? [1]));
                             const barPct = Math.min((d.minutes / Math.max(maxMin, 1)) * 100, 100);
+                            const weekAchieved = goalMinutes > 0 && (
+                                isInvestApp ? d.minutes >= goalMinutes : d.minutes <= goalMinutes
+                            );
                             return (
                                 <View key={d.week} style={[styles.weekRow, i === 0 && { borderTopWidth: 0.5, borderTopColor: '#1c1c1a' }]}>
                                     <Text style={styles.weekLabel}>{d.week}</Text>
@@ -251,6 +352,7 @@ export default function TrendsScreen() {
                                     <Text style={[styles.weekVal, { color: lineColor }]}>
                                         {Math.floor(d.minutes / 60)}h {d.minutes % 60}m
                                     </Text>
+                                    {weekAchieved && <Text style={styles.weekAchieved}>✓</Text>}
                                 </View>
                             );
                         })}
@@ -278,7 +380,16 @@ const styles = StyleSheet.create({
     rangeBtnTextActive: { color: '#ffffff' },
     sectionLabel: { fontFamily: 'GeistMono_400Regular', fontSize: 10, color: '#5a5754', letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 12 },
     appScroll: { marginBottom: 16 },
-    appBtn: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, borderWidth: 1, borderColor: '#2a2826', marginRight: 8, alignItems: 'center', minWidth: 60 },
+    // 토큰키 앱: 아이콘만, 텍스트 앱: 기존 박스
+    appIconBtn: { marginRight: 10, alignItems: 'center', justifyContent: 'center' },
+    appIconWrap: {
+        width: 40, height: 40, borderRadius: 12,
+        backgroundColor: '#1c1c1a',
+        alignItems: 'center', justifyContent: 'center',
+        borderWidth: 0, borderColor: 'transparent',
+        overflow: 'hidden',
+    },
+    appTextBtn: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, borderWidth: 1, borderColor: '#2a2826', alignItems: 'center', minWidth: 60 },
     appBtnLoss: { backgroundColor: 'rgba(248,113,113,0.1)', borderColor: 'rgba(248,113,113,0.3)' },
     appBtnInvest: { backgroundColor: 'rgba(74,222,128,0.1)', borderColor: 'rgba(74,222,128,0.3)' },
     appBtnText: { fontFamily: 'GeistMono_500Medium', fontSize: 12, color: '#5a5754' },
@@ -289,16 +400,58 @@ const styles = StyleSheet.create({
     statDivider: { width: 0.5, backgroundColor: '#2a2826', marginVertical: 10 },
     statLabel: { fontFamily: 'GeistMono_400Regular', fontSize: 9, color: '#5a5754', marginBottom: 6, letterSpacing: 0.5 },
     statVal: { fontFamily: 'GeistMono_500Medium', fontSize: 14 },
+    goalBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+        borderRadius: 12,
+        padding: 14,
+        marginBottom: 16,
+        borderWidth: 1,
+    },
+    goalBadgeAchieved: {
+        backgroundColor: 'rgba(74,222,128,0.08)',
+        borderColor: 'rgba(74,222,128,0.25)',
+    },
+    goalBadgePending: {
+        backgroundColor: '#161614',
+        borderColor: '#2a2826',
+    },
+    goalBadgeWarning: {
+        backgroundColor: 'rgba(248,113,113,0.06)',
+        borderColor: 'rgba(248,113,113,0.2)',
+    },
+    goalBadgeIcon: { fontSize: 20 },
+    goalBadgeTitle: {
+        fontFamily: 'GeistMono_500Medium',
+        fontSize: 13,
+        marginBottom: 3,
+    },
+    goalBadgeSub: {
+        fontFamily: 'GeistMono_400Regular',
+        fontSize: 11,
+        color: '#5a5754',
+    },
+    goalBadgePct: {
+        fontFamily: 'GeistMono_700Bold',
+        fontSize: 18,
+    },
     chartBox: { backgroundColor: '#161614', borderRadius: 12, padding: 16, marginBottom: 8 },
     chartHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
     chartTitle: { fontFamily: 'GeistMono_500Medium', fontSize: 14, color: '#f0ede8' },
     chartSub: { fontFamily: 'GeistMono_400Regular', fontSize: 10, color: '#5a5754' },
+    goalChipText: {
+        fontFamily: 'GeistMono_400Regular',
+        fontSize: 10,
+        color: 'rgba(74,222,128,0.6)',
+    },
     weekList: { borderRadius: 12, overflow: 'hidden', marginBottom: 8 },
     weekRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, borderBottomWidth: 0.5, borderBottomColor: '#1c1c1a' },
     weekLabel: { fontFamily: 'GeistMono_400Regular', fontSize: 11, color: '#5a5754', width: 52 },
     weekBarBg: { flex: 1, height: 4, backgroundColor: '#2a2826', borderRadius: 2 },
     weekBar: { height: 4, borderRadius: 2 },
     weekVal: { fontFamily: 'GeistMono_500Medium', fontSize: 11, width: 64, textAlign: 'right' },
+    weekAchieved: { fontFamily: 'GeistMono_500Medium', fontSize: 12, color: '#4ade80', width: 16 },
     emptyBox: { paddingVertical: 48, alignItems: 'center' },
     emptyText: { fontFamily: 'GeistMono_500Medium', fontSize: 14, color: '#5a5754', marginBottom: 8 },
     emptySub: { fontFamily: 'GeistMono_400Regular', fontSize: 12, color: '#3a3836', textAlign: 'center' },

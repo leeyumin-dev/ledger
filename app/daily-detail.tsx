@@ -5,6 +5,8 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
 import { supabase } from '../src/lib/supabase';
+import { isTokenKey, getMonitoringStatus } from '../src/lib/screenTime';
+import { AppTokenLabel } from '../src/components/AppTokenLabel';
 
 type UsageItem = {
     id: string;
@@ -33,16 +35,22 @@ export default function DailyDetailScreen() {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return;
 
-        const [settingsRes, usageRes] = await Promise.all([
+        const [settingsRes, usageRes, monitorStatus] = await Promise.all([
             supabase.from('user_settings').select('sleep_hours, work_hours').eq('user_id', user.id).single(),
             supabase.from('app_usage').select('*').eq('user_id', user.id).eq('date', date),
+            getMonitoringStatus(),
         ]);
 
         if (settingsRes.data) {
             setSleepHours(settingsRes.data.sleep_hours);
             setWorkHours(settingsRes.data.work_hours);
         }
-        if (usageRes.data) setUsageList(usageRes.data);
+        if (usageRes.data) {
+            const validLocalKeys = new Set(monitorStatus?.appList ?? []);
+            setUsageList(usageRes.data.filter(u =>
+                !isTokenKey(u.app_name) || validLocalKeys.has(u.app_name)
+            ));
+        }
     }
 
     function groupByApp(category: string) {
@@ -89,7 +97,9 @@ export default function DailyDetailScreen() {
             {groupByApp('소비').length === 0
                 ? <Text style={styles.emptyRow}>지출 없음</Text>
                 : groupByApp('소비').map(([app, min]) => (
-                    <Row key={app} label={app} value={fmt(min)} indent loss />
+                    <Row key={app} label={isTokenKey(app)
+                        ? <AppTokenLabel tokenKey={app} color="#9a9690" fontSize={13} style={{ flex: 1, height: 26 }} />
+                        : app} value={fmt(min)} indent loss />
                 ))
             }
 
@@ -98,7 +108,9 @@ export default function DailyDetailScreen() {
             {groupByApp('투자').length === 0
                 ? <Text style={styles.emptyRow}>투자 없음</Text>
                 : groupByApp('투자').map(([app, min]) => (
-                    <Row key={app} label={app} value={fmt(min)} indent profit />
+                    <Row key={app} label={isTokenKey(app)
+                        ? <AppTokenLabel tokenKey={app} color="#9a9690" fontSize={13} style={{ flex: 1, height: 26 }} />
+                        : app} value={fmt(min)} indent profit />
                 ))
             }
 
@@ -107,7 +119,9 @@ export default function DailyDetailScreen() {
                 <>
                     <Text style={[styles.sectionLabel, { marginTop: 16 }]}>필수 지출</Text>
                     {groupByApp('필수').map(([app, min]) => (
-                        <Row key={app} label={app} value={fmt(min)} indent muted />
+                        <Row key={app} label={isTokenKey(app)
+                            ? <AppTokenLabel tokenKey={app} color="#9a9690" fontSize={13} style={{ flex: 1, height: 26 }} />
+                            : app} value={fmt(min)} indent muted />
                     ))}
                 </>
             )}
@@ -141,13 +155,17 @@ export default function DailyDetailScreen() {
 }
 
 function Row({ label, value, indent, bold, loss, profit, muted }: {
-    label: string; value: string;
+    label: string | React.ReactNode; value: string;
     indent?: boolean; bold?: boolean;
     loss?: boolean; profit?: boolean; muted?: boolean;
 }) {
     return (
         <View style={[styles.row, indent && styles.rowIndent]}>
-            <Text style={[styles.rowLabel, bold && styles.boldText]}>{label}</Text>
+            <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}>
+                {typeof label === 'string'
+                    ? <Text style={[styles.rowLabel, bold && styles.boldText]}>{label}</Text>
+                    : label}
+            </View>
             <Text style={[
                 styles.rowValue,
                 bold && styles.boldText,
@@ -169,7 +187,7 @@ const styles = StyleSheet.create({
     thickDivider: { height: 1.5, backgroundColor: '#3a3836', marginVertical: 12 },
     thinDivider: { height: 0.5, backgroundColor: '#2a2826', marginVertical: 8 },
     sectionLabel: { fontFamily: 'GeistMono_400Regular', fontSize: 10, color: '#5a5754', letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 10 },
-    row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 6 },
+    row: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6 },
     rowIndent: { paddingLeft: 16 },
     rowLabel: { fontFamily: 'GeistMono_400Regular', fontSize: 13, color: '#9a9690' },
     rowValue: { fontFamily: 'GeistMono_400Regular', fontSize: 13, color: '#f0ede8' },

@@ -51,7 +51,17 @@ RCT_EXTERN_METHOD(stopMonitoring:
                   (RCTPromiseResolveBlock)resolve
                   reject:(RCTPromiseRejectBlock)reject)
 
+RCT_EXTERN_METHOD(syncBudgetMap:
+                  (NSString *)json
+                  resolve:(RCTPromiseResolveBlock)resolve
+                  reject:(RCTPromiseRejectBlock)reject)
+
 RCT_EXTERN_METHOD(getDailyUsage:
+                  (NSString *)dateStr
+                  resolve:(RCTPromiseResolveBlock)resolve
+                  reject:(RCTPromiseRejectBlock)reject)
+
+RCT_EXTERN_METHOD(clearDailyUsage:
                   (NSString *)dateStr
                   resolve:(RCTPromiseResolveBlock)resolve
                   reject:(RCTPromiseRejectBlock)reject)
@@ -65,6 +75,22 @@ RCT_EXTERN_METHOD(checkSyncNeeded:
                   reject:(RCTPromiseRejectBlock)reject)
 
 RCT_EXTERN_METHOD(clearSyncNeeded:
+                  (RCTPromiseResolveBlock)resolve
+                  reject:(RCTPromiseRejectBlock)reject)
+
+// 로그아웃 시 로컬 데이터 전체 삭제
+RCT_EXTERN_METHOD(clearAllLocalData:
+                  (RCTPromiseResolveBlock)resolve
+                  reject:(RCTPromiseRejectBlock)reject)
+
+// 이름 맵 저장 { "app_0": "유튜브" }
+RCT_EXTERN_METHOD(setNameMap:
+                  (NSString *)json
+                  resolve:(RCTPromiseResolveBlock)resolve
+                  reject:(RCTPromiseRejectBlock)reject)
+
+// 이름 맵 읽기
+RCT_EXTERN_METHOD(getNameMap:
                   (RCTPromiseResolveBlock)resolve
                   reject:(RCTPromiseRejectBlock)reject)
 

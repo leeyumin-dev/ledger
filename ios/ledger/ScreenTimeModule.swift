@@ -15,6 +15,7 @@ private let activityName = DeviceActivityName("ledger.daily")
 private let kTokenMap  = "ledger_token_map"   // { "app_0": "<base64>" }
 private let kTokenList = "ledger_token_list"  // ["app_0", "app_1"] — 순서 보장
 private let kAppMap    = "ledger_app_map"     // { "0": "app_0", "1": "app_1" } — Extension용
+private let kNameMap   = "ledger_name_map"    // { "app_0": "유튜브" } — 사용자 입력 이름
 
 @objc(ScreenTimeModule)
 class ScreenTimeModule: NSObject {
@@ -216,6 +217,73 @@ class ScreenTimeModule: NSObject {
         resolve(true)
     }
 
+    // MARK: - 로그아웃 시 로컬 데이터 전체 삭제
+    // 토큰 맵도 삭제: "어떤 앱을 추적하는지"는 유저별 설정이므로 계정 격리 필요
+    // 부작용: 동일 계정 재로그인 시 앱 피커에서 다시 선택해야 함
+
+    @objc
+    func clearAllLocalData(
+        _ resolve: @escaping RCTPromiseResolveBlock,
+        reject: @escaping RCTPromiseRejectBlock
+    ) {
+        let stores: [UserDefaults?] = [defaults, UserDefaults.standard]
+        for d in stores.compactMap({ $0 }) {
+            // 추적 앱 토큰 (어떤 앱을 추적하는지 = 유저별)
+            d.removeObject(forKey: kTokenMap)
+            d.removeObject(forKey: kTokenList)
+            d.removeObject(forKey: kAppMap)
+            d.removeObject(forKey: kNameMap)
+            // 오늘 사용량 버퍼
+            for key in d.dictionaryRepresentation().keys where key.hasPrefix("ledger_usage_") {
+                d.removeObject(forKey: key)
+            }
+            // 동기화 플래그 및 예산 맵
+            d.removeObject(forKey: "ledger_sync_needed")
+            d.removeObject(forKey: "ledger_budget_map")
+            d.synchronize()
+        }
+        resolve(nil)
+    }
+
+    // MARK: - 이름 맵 저장 { "app_0": "유튜브" }
+
+    @objc
+    func setNameMap(
+        _ json: String,
+        resolve: @escaping RCTPromiseResolveBlock,
+        reject: @escaping RCTPromiseRejectBlock
+    ) {
+        // 기존 맵과 머지 (기존 항목 유지, 새 항목 추가/업데이트)
+        var existing = loadNameMap()
+        if let data = json.data(using: .utf8),
+           let incoming = try? JSONSerialization.jsonObject(with: data) as? [String: String] {
+            for (k, v) in incoming { existing[k] = v }
+        }
+        if let data = try? JSONSerialization.data(withJSONObject: existing),
+           let str  = String(data: data, encoding: .utf8) {
+            defaults?.set(str, forKey: kNameMap)
+            UserDefaults.standard.set(str, forKey: kNameMap)
+            defaults?.synchronize()
+        }
+        resolve(nil)
+    }
+
+    // MARK: - 이름 맵 읽기
+
+    @objc
+    func getNameMap(
+        _ resolve: @escaping RCTPromiseResolveBlock,
+        reject: @escaping RCTPromiseRejectBlock
+    ) {
+        let map = loadNameMap()
+        if let data = try? JSONSerialization.data(withJSONObject: map),
+           let str  = String(data: data, encoding: .utf8) {
+            resolve(str)
+        } else {
+            resolve("{}")
+        }
+    }
+
     // MARK: - 앱 토큰 하나 제거
 
     @objc
@@ -226,6 +294,14 @@ class ScreenTimeModule: NSObject {
     ) {
         var tokenMap  = loadTokenMap()
         var tokenList = loadTokenList()
+        // 이름 맵에서도 제거
+        var nameMap = loadNameMap()
+        nameMap.removeValue(forKey: appName)
+        if let data = try? JSONSerialization.data(withJSONObject: nameMap),
+           let str  = String(data: data, encoding: .utf8) {
+            defaults?.set(str, forKey: kNameMap)
+            UserDefaults.standard.set(str, forKey: kNameMap)
+        }
         tokenMap.removeValue(forKey: appName)
         tokenList.removeAll { $0 == appName }
         persistTokenMap(tokenMap)
@@ -252,12 +328,32 @@ class ScreenTimeModule: NSObject {
             return
         }
 
+        // 토큰 목록이 동일하고 이미 모니터링 중이면 재시작 금지 (중복 카운팅 방지)
+        let currentHash = tokenList.joined(separator: ",")
+        let savedHash   = defaults?.string(forKey: "ledger_token_hash") ?? ""
+        let center      = DeviceActivityCenter()
+        if currentHash == savedHash && center.activities.contains(activityName) {
+            resolve(true); return
+        }
+
         // 하루 스케줄 (자정~23:59, 매일 반복)
         let schedule = DeviceActivitySchedule(
             intervalStart: DateComponents(hour: 0, minute: 0),
             intervalEnd:   DateComponents(hour: 23, minute: 59),
             repeats: true
         )
+
+        // 오늘 이미 기록된 사용량 로드 (이미 지나간 임계값은 등록 생략)
+        let fmt = DateFormatter()
+        fmt.dateFormat = "yyyy-MM-dd"
+        fmt.timeZone = .current
+        let todayStr = fmt.string(from: Date())
+        var todayUsage: [String: Int] = [:]
+        if let json = defaults?.string(forKey: "ledger_usage_\(todayStr)"),
+           let data = json.data(using: .utf8),
+           let map  = try? JSONSerialization.jsonObject(with: data) as? [String: Int] {
+            todayUsage = map
+        }
 
         var events: [DeviceActivityEvent.Name: DeviceActivityEvent] = [:]
         var appMapDict: [String: String] = [:]
@@ -272,7 +368,10 @@ class ScreenTimeModule: NSObject {
 
             if let token = sel.applicationTokens.first {
                 appMapDict[String(appIndex)] = appKey
-                for mins in stride(from: 5, through: 180, by: 5) {
+                // 이미 기록된 분수 다음 임계값부터만 등록 (10분 단위, 최대 720분)
+                let recorded = todayUsage[appKey] ?? 0
+                let startMins = ((recorded / 10) + 1) * 10
+                for mins in stride(from: startMins, through: 720, by: 10) {
                     let name = DeviceActivityEvent.Name("idx_\(appIndex)_t\(mins)")
                     events[name] = DeviceActivityEvent(
                         applications: [token],
@@ -282,7 +381,9 @@ class ScreenTimeModule: NSObject {
                 appIndex += 1
             } else if let catToken = sel.categoryTokens.first {
                 appMapDict["cat_\(catIndex)"] = appKey
-                for mins in stride(from: 5, through: 180, by: 5) {
+                let recorded = todayUsage[appKey] ?? 0
+                let startMins = ((recorded / 10) + 1) * 10
+                for mins in stride(from: startMins, through: 720, by: 10) {
                     let name = DeviceActivityEvent.Name("cat_\(catIndex)_t\(mins)")
                     events[name] = DeviceActivityEvent(
                         categories: [catToken],
@@ -305,11 +406,13 @@ class ScreenTimeModule: NSObject {
             defaults?.set(json, forKey: kAppMap)
         }
 
-        let center = DeviceActivityCenter()
         center.stopMonitoring([activityName])
 
         do {
             try center.startMonitoring(activityName, during: schedule, events: events)
+            // 재시작 기준 hash 저장 (동일 목록 재진입 시 skip에 사용)
+            defaults?.set(currentHash, forKey: "ledger_token_hash")
+            defaults?.synchronize()
             resolve(true)
         } catch {
             reject("MONITOR_ERROR", "모니터링 시작 실패: \(error.localizedDescription)", error)
@@ -328,6 +431,20 @@ class ScreenTimeModule: NSObject {
         resolve(true)
     }
 
+    // MARK: - 예산 맵 동기화 (Extension 백그라운드 알림용)
+    // JSON 형식: { "app_0": { "budget": 60, "display": "YouTube" }, ... }
+
+    @objc
+    func syncBudgetMap(
+        _ json: String,
+        resolve: @escaping RCTPromiseResolveBlock,
+        reject: @escaping RCTPromiseRejectBlock
+    ) {
+        defaults?.set(json, forKey: "ledger_budget_map")
+        defaults?.synchronize()
+        resolve(true)
+    }
+
     // MARK: - 일일 사용량 읽기
 
     @objc
@@ -343,8 +460,12 @@ class ScreenTimeModule: NSObject {
             resolve("[]"); return
         }
 
-        let result = map.map { name, mins -> [String: Any] in
-            ["app_name": name, "bundle_id": "", "duration_minutes": mins]
+        let nameMap = loadNameMap()
+
+        let result = map.map { tokenKey, mins -> [String: Any] in
+            // 토큰 키를 사용자 입력 이름으로 변환 (없으면 토큰 키 그대로)
+            let displayName = nameMap[tokenKey] ?? tokenKey
+            return ["app_name": displayName, "bundle_id": "", "duration_minutes": mins]
         }
         if let encoded = try? JSONSerialization.data(withJSONObject: result),
            let str = String(data: encoded, encoding: .utf8) {
@@ -352,6 +473,18 @@ class ScreenTimeModule: NSObject {
         } else {
             resolve("[]")
         }
+    }
+
+    // MARK: - 동기화 완료된 날짜의 UserDefaults 버퍼 삭제
+
+    @objc
+    func clearDailyUsage(
+        _ dateStr: String,
+        resolve: @escaping RCTPromiseResolveBlock,
+        reject: @escaping RCTPromiseRejectBlock
+    ) {
+        defaults?.removeObject(forKey: "ledger_usage_\(dateStr)")
+        resolve(nil)
     }
 
     // MARK: - 모니터링 상태 조회
@@ -462,6 +595,15 @@ class ScreenTimeModule: NSObject {
               let list = try? JSONSerialization.jsonObject(with: data) as? [String]
         else { return [] }
         return list
+    }
+
+    private func loadNameMap() -> [String: String] {
+        guard let json = defaults?.string(forKey: kNameMap)
+                      ?? UserDefaults.standard.string(forKey: kNameMap),
+              let data = json.data(using: .utf8),
+              let map  = try? JSONSerialization.jsonObject(with: data) as? [String: String]
+        else { return [:] }
+        return map
     }
 
     private func persistTokenMap(_ map: [String: String]) {

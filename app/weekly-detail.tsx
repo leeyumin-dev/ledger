@@ -6,7 +6,7 @@ import {
 import { useLocalSearchParams, router } from 'expo-router';
 import { supabase } from '../src/lib/supabase';
 import { AppTokenLabel } from '../src/components/AppTokenLabel';
-import { isTokenKey } from '../src/lib/screenTime';
+import { isTokenKey, getMonitoringStatus } from '../src/lib/screenTime';
 
 type UsageItem = {
   id: string;
@@ -33,33 +33,46 @@ export default function WeeklyDetailScreen() {
     // 주차 레이블에서 날짜 범위 계산
     const { start, end } = getWeekRange(week);
 
-    const [settingsRes, usageRes] = await Promise.all([
+    const [settingsRes, usageRes, monitorStatus] = await Promise.all([
       supabase.from('user_settings').select('sleep_hours, work_hours').eq('user_id', user.id).single(),
       supabase.from('app_usage').select('*').eq('user_id', user.id).gte('date', start).lte('date', end).order('date', { ascending: false }),
+      getMonitoringStatus(),
     ]);
 
     if (settingsRes.data) {
       setSleepHours(settingsRes.data.sleep_hours);
       setWorkHours(settingsRes.data.work_hours);
     }
-    if (usageRes.data) setUsageList(usageRes.data);
+    if (usageRes.data) {
+      const validLocalKeys = new Set(monitorStatus?.appList ?? []);
+      setUsageList(usageRes.data.filter(u =>
+        !isTokenKey(u.app_name) || validLocalKeys.has(u.app_name)
+      ));
+    }
   }
 
   function getWeekRange(weekLabel: string) {
-    // "3월 4주차" → 날짜 범위 계산
+    // "3월 4주차" → 해당 월의 N번째 월요일 기준 날짜 범위
     const now = new Date();
     const year = now.getFullYear();
     const match = weekLabel.match(/(\d+)월 (\d+)주차/);
     if (!match) return { start: '', end: '' };
 
-    const month = parseInt(match[1]) - 1;
+    const month = parseInt(match[1]) - 1; // 0-indexed
     const weekNum = parseInt(match[2]);
-    const startDay = (weekNum - 1) * 7 + 1;
-    const endDay = Math.min(weekNum * 7, new Date(year, month + 1, 0).getDate());
 
-    const start = `${year}-${String(month + 1).padStart(2, '0')}-${String(startDay).padStart(2, '0')}`;
-    const end   = `${year}-${String(month + 1).padStart(2, '0')}-${String(endDay).padStart(2, '0')}`;
-    return { start, end };
+    // 해당 월 1일의 요일로 첫 번째 월요일 날짜 계산
+    const firstDay = new Date(year, month, 1).getDay(); // 0=일
+    const firstMondayDate = firstDay <= 1 ? 2 - firstDay : 9 - firstDay;
+    const mondayDate = firstMondayDate + (weekNum - 1) * 7;
+
+    const monday = new Date(year, month, mondayDate);
+    const sunday = new Date(year, month, mondayDate + 6);
+
+    const fmt = (d: Date) =>
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+    return { start: fmt(monday), end: fmt(sunday) };
   }
 
   // 카테고리별 합산
