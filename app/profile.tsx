@@ -177,7 +177,11 @@ export default function ProfileScreen() {
       if (newKey) newKeys.push(newKey);
     }
 
-    if (newKeys.length === 0) return;
+    if (newKeys.length === 0) {
+      // 선택한 앱이 전부 이미 추적 중인 경우
+      Alert.alert('이미 추가됨', '선택한 앱이 이미 추적 중이에요.');
+      return;
+    }
     setNameInputs({});
     setPendingTokenKeys(newKeys);
   }

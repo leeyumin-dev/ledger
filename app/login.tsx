@@ -1,15 +1,11 @@
 import { useState } from 'react';
 import {
-  View, Text, TextInput,
+  View, Text,
   TouchableOpacity, StyleSheet,
   KeyboardAvoidingView, Platform, Alert
 } from 'react-native';
-import * as WebBrowser from 'expo-web-browser';
-import * as Linking from 'expo-linking';
 import { GoogleSignin, statusCodes } from '@react-native-google-signin/google-signin';
 import { supabase } from '../src/lib/supabase';
-
-WebBrowser.maybeCompleteAuthSession();
 
 GoogleSignin.configure({
   iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
@@ -17,39 +13,37 @@ GoogleSignin.configure({
 });
 
 export default function LoginScreen() {
-  const [email, setEmail]       = useState('');
-  const [password, setPassword] = useState('');
+  // const [email, setEmail]       = useState('');
+  // const [password, setPassword] = useState('');
   const [loading, setLoading]   = useState(false);
-  const [isSignUp, setIsSignUp] = useState(false);
+  // const [isSignUp, setIsSignUp] = useState(false);
 
-  async function handleAuth() {
-    setLoading(true);
+  // async function handleAuth() {
+  //   setLoading(true);
+  //   if (isSignUp) {
+  //     const { error } = await supabase.auth.signUp({ email, password });
+  //     if (error) Alert.alert('오류', error.message);
+  //     else Alert.alert('확인', '이메일을 확인해주세요.');
+  //   } else {
+  //     const { error } = await supabase.auth.signInWithPassword({ email, password });
+  //     if (error) Alert.alert('오류', '이메일 또는 비밀번호가 틀렸어요.');
+  //   }
+  //   setLoading(false);
+  // }
 
-    if (isSignUp) {
-      const { error } = await supabase.auth.signUp({ email, password });
-      if (error) Alert.alert('오류', error.message);
-      else Alert.alert('확인', '이메일을 확인해주세요.');
-    } else {
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
-      if (error) Alert.alert('오류', '이메일 또는 비밀번호가 틀렸어요.');
-    }
-
-    setLoading(false);
-  }
-
-  async function handleKakaoSignIn() {
-    try {
-      const redirectTo = Linking.createURL('/auth/callback');
-      const { data, error } = await supabase.auth.signInWithOAuth({
-        provider: 'kakao',
-        options: { redirectTo, skipBrowserRedirect: true },
-      });
-      if (error || !data.url) { Alert.alert('오류', '카카오 로그인에 실패했어요.'); return; }
-      await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
-    } catch {
-      Alert.alert('오류', '카카오 로그인에 실패했어요.');
-    }
-  }
+  // async function handleKakaoSignIn() {
+  //   try {
+  //     const redirectTo = Linking.createURL('/auth/callback');
+  //     const { data, error } = await supabase.auth.signInWithOAuth({
+  //       provider: 'kakao',
+  //       options: { redirectTo, skipBrowserRedirect: true },
+  //     });
+  //     if (error || !data.url) { Alert.alert('오류', '카카오 로그인에 실패했어요.'); return; }
+  //     await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
+  //   } catch {
+  //     Alert.alert('오류', '카카오 로그인에 실패했어요.');
+  //   }
+  // }
 
   async function handleGoogleSignIn() {
     try {
@@ -81,8 +75,8 @@ export default function LoginScreen() {
         <Text style={styles.logo}>Ledger.</Text>
         <Text style={styles.tagline}>시간 재무제표</Text>
 
-        {/* 입력 필드 */}
-        <View style={styles.form}>
+        {/* 입력 필드 - 비활성화 */}
+        {/* <View style={styles.form}>
           <TextInput
             style={styles.input}
             placeholder="이메일"
@@ -100,10 +94,10 @@ export default function LoginScreen() {
             onChangeText={setPassword}
             secureTextEntry
           />
-        </View>
+        </View> */}
 
-        {/* 버튼 */}
-        <TouchableOpacity
+        {/* 이메일 로그인 버튼 - 비활성화 */}
+        {/* <TouchableOpacity
           style={[styles.btn, loading && styles.btnDisabled]}
           onPress={handleAuth}
           disabled={loading}
@@ -111,14 +105,14 @@ export default function LoginScreen() {
           <Text style={styles.btnText}>
             {loading ? '처리 중...' : isSignUp ? '회원가입' : '로그인'}
           </Text>
-        </TouchableOpacity>
+        </TouchableOpacity> */}
 
-        {/* 구분선 */}
-        <View style={styles.divider}>
+        {/* 구분선 - 비활성화 */}
+        {/* <View style={styles.divider}>
           <View style={styles.dividerLine} />
           <Text style={styles.dividerText}>또는</Text>
           <View style={styles.dividerLine} />
-        </View>
+        </View> */}
 
         {/* 구글 로그인 */}
         <TouchableOpacity
@@ -129,21 +123,21 @@ export default function LoginScreen() {
           <Text style={styles.googleBtnText}>Google로 계속하기</Text>
         </TouchableOpacity>
 
-        {/* 카카오 로그인 */}
-        <TouchableOpacity
+        {/* 카카오 로그인 - 비활성화 */}
+        {/* <TouchableOpacity
           style={styles.kakaoBtn}
           onPress={handleKakaoSignIn}
           disabled={loading}
         >
           <Text style={styles.kakaoBtnText}>카카오로 계속하기</Text>
-        </TouchableOpacity>
+        </TouchableOpacity> */}
 
-        {/* 전환 */}
-        <TouchableOpacity onPress={() => setIsSignUp(!isSignUp)}>
+        {/* 전환 - 비활성화 */}
+        {/* <TouchableOpacity onPress={() => setIsSignUp(!isSignUp)}>
           <Text style={styles.toggle}>
             {isSignUp ? '이미 계정이 있어요 → 로그인' : '계정이 없어요 → 회원가입'}
           </Text>
-        </TouchableOpacity>
+        </TouchableOpacity> */}
 
       </View>
     </KeyboardAvoidingView>

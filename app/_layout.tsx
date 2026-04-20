@@ -9,7 +9,7 @@ import * as Linking from 'expo-linking';
 import * as Notifications from 'expo-notifications';
 import { supabase } from '../src/lib/supabase';
 import { useAutoSync } from '../src/hooks/useAutoSync';
-import { hasPermission, startMonitoring, stopMonitoring, isTokenKey, cleanStaleTokenKeys, clearAllLocalData } from '../src/lib/screenTime';
+import { hasPermission, startMonitoring, stopMonitoring, clearAllLocalData } from '../src/lib/screenTime';
 import { scheduleWeeklySettlementNotification, cancelWeeklySettlementNotification, scheduleGoalCheckNotification, cancelGoalCheckNotification } from '../src/lib/notifications';
 import { SyncContext } from '../src/lib/SyncContext';
 
@@ -58,58 +58,7 @@ export default function RootLayout() {
     });
 
     scheduleGoalCheckNotification();
-    scheduleWeeklySettlementNotification().then(async () => {
-      const scheduled = await Notifications.getAllScheduledNotificationsAsync();
-      console.log('[Notif] 등록된 알림:', JSON.stringify(
-        scheduled.map(n => ({ id: n.identifier, trigger: n.trigger })),
-        null, 2
-      ));
-    });
-
-    // 재설치 후 로그인 시 stale 토큰 감지 및 정리
-    (async () => {
-      const { data: categories } = await supabase
-        .from('app_categories')
-        .select('app_name')
-        .eq('user_id', session.user.id);
-
-      const registeredTokenKeys = new Set(
-        (categories ?? []).map(c => c.app_name).filter(isTokenKey)
-      );
-
-      // app_usage에 있는 토큰 키 중 app_categories에 없는 것 → 고아 행 삭제
-      const { data: usageRows } = await supabase
-        .from('app_usage')
-        .select('app_name')
-        .eq('user_id', session.user.id);
-
-      const orphanKeys = [...new Set(
-        (usageRows ?? [])
-          .map(u => u.app_name)
-          .filter(name => isTokenKey(name) && !registeredTokenKeys.has(name))
-      )];
-
-      if (orphanKeys.length > 0) {
-        await supabase.from('app_usage').delete()
-          .eq('user_id', session.user.id).in('app_name', orphanKeys);
-      }
-
-      // app_categories에 있지만 로컬 토큰이 없는 것 → 재설치로 유실된 stale 토큰
-      const staleKeys = await cleanStaleTokenKeys([...registeredTokenKeys]);
-      if (staleKeys.length === 0) return;
-
-      await Promise.all([
-        supabase.from('app_categories').delete()
-          .eq('user_id', session.user.id).in('app_name', staleKeys),
-        supabase.from('app_usage').delete()
-          .eq('user_id', session.user.id).in('app_name', staleKeys),
-      ]);
-
-      Alert.alert(
-        '추적 앱 초기화됨',
-        '앱 재설치로 인해 추적 앱 데이터가 초기화됐어요.\n프로필에서 앱을 다시 추가해주세요.'
-      );
-    })();
+    scheduleWeeklySettlementNotification();
   }, [session]);
 
   useEffect(() => {

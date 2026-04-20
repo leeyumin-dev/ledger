@@ -9,7 +9,6 @@ import {
   clearSyncNeeded,
   syncBudgetMap,
   clearDailyUsage,
-  getNameMap,
   toLocalDateStr,
   UsageData,
 } from '../lib/screenTime';
@@ -96,17 +95,14 @@ export function useAutoSync() {
     if (dateStr === toLocalDateStr()) {
       const { data: budgetData } = await supabase
         .from('app_categories')
-        .select('app_name, budget_minutes, display_name')
+        .select('app_name, budget_minutes')
         .eq('user_id', user.id)
         .gt('budget_minutes', 0);
 
       if (budgetData && budgetData.length > 0) {
-        const budgetMap: Record<string, { budget: number; display?: string }> = {};
+        const budgetMap: Record<string, { budget: number }> = {};
         budgetData.forEach(b => {
-          budgetMap[b.app_name] = {
-            budget: b.budget_minutes,
-            display: b.display_name ?? undefined,
-          };
+          budgetMap[b.app_name] = { budget: b.budget_minutes };
         });
         await syncBudgetMap(budgetMap);
       }

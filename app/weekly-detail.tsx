@@ -5,8 +5,6 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
 import { supabase } from '../src/lib/supabase';
-import { AppTokenLabel } from '../src/components/AppTokenLabel';
-import { isTokenKey, getMonitoringStatus } from '../src/lib/screenTime';
 
 type UsageItem = {
   id: string;
@@ -33,10 +31,9 @@ export default function WeeklyDetailScreen() {
     // 주차 레이블에서 날짜 범위 계산
     const { start, end } = getWeekRange(week);
 
-    const [settingsRes, usageRes, monitorStatus] = await Promise.all([
+    const [settingsRes, usageRes] = await Promise.all([
       supabase.from('user_settings').select('sleep_hours, work_hours').eq('user_id', user.id).single(),
       supabase.from('app_usage').select('*').eq('user_id', user.id).gte('date', start).lte('date', end).order('date', { ascending: false }),
-      getMonitoringStatus(),
     ]);
 
     if (settingsRes.data) {
@@ -44,10 +41,7 @@ export default function WeeklyDetailScreen() {
       setWorkHours(settingsRes.data.work_hours);
     }
     if (usageRes.data) {
-      const validLocalKeys = new Set(monitorStatus?.appList ?? []);
-      setUsageList(usageRes.data.filter(u =>
-        !isTokenKey(u.app_name) || validLocalKeys.has(u.app_name)
-      ));
+      setUsageList(usageRes.data);
     }
   }
 
@@ -125,9 +119,7 @@ export default function WeeklyDetailScreen() {
       {groupByApp(lossItems).length === 0
         ? <Text style={styles.emptyRow}>지출 없음</Text>
         : groupByApp(lossItems).map(([app, min]) => (
-          <Row key={app} label={isTokenKey(app)
-            ? <AppTokenLabel tokenKey={app} color="#9a9690" fontSize={13} style={{ flex: 1, height: 26 }} />
-            : app} value={fmt(min)} indent loss />
+          <Row key={app} label={app} value={fmt(min)} indent loss />
         ))
       }
       <View style={styles.thinDivider} />
@@ -138,9 +130,7 @@ export default function WeeklyDetailScreen() {
       {groupByApp(investItems).length === 0
         ? <Text style={styles.emptyRow}>투자 없음</Text>
         : groupByApp(investItems).map(([app, min]) => (
-          <Row key={app} label={isTokenKey(app)
-            ? <AppTokenLabel tokenKey={app} color="#9a9690" fontSize={13} style={{ flex: 1, height: 26 }} />
-            : app} value={fmt(min)} indent profit />
+          <Row key={app} label={app} value={fmt(min)} indent profit />
         ))
       }
       <View style={styles.thinDivider} />
@@ -151,9 +141,7 @@ export default function WeeklyDetailScreen() {
         <>
           <Text style={[styles.sectionLabel, { marginTop: 16 }]}>필수 지출</Text>
           {groupByApp(essentialItems).map(([app, min]) => (
-            <Row key={app} label={isTokenKey(app)
-              ? <AppTokenLabel tokenKey={app} color="#9a9690" fontSize={13} style={{ flex: 1, height: 26 }} />
-              : app} value={fmt(min)} indent muted />
+            <Row key={app} label={app} value={fmt(min)} indent muted />
           ))}
         </>
       )}

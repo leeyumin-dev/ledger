@@ -7,8 +7,6 @@ import {
 import { useFocusEffect } from 'expo-router';
 import { supabase } from '../src/lib/supabase';
 import { DEFAULT_APPS } from '../src/lib/defaultApps';
-import { AppTokenLabel } from '../src/components/AppTokenLabel';
-import { isTokenKey } from '../src/lib/screenTime';
 
 type AppCategory = {
     id: string;
@@ -212,11 +210,7 @@ export default function CategorySettingsScreen() {
                                 style={styles.item}
                             >
                                 <View style={styles.itemTop}>
-                                    {isTokenKey(item.app_name) ? (
-                                        <AppTokenLabel tokenKey={item.app_name} iconOnly style={{ width: 26, height: 26 }} />
-                                    ) : (
-                                        <Text style={styles.itemName}>{item.app_name}</Text>
-                                    )}
+                                    <Text style={styles.itemName}>{item.app_name}</Text>
                                     <View style={{ flexDirection: 'row', gap: 8 }}>
                                         {item.category === '소비' && fmtMinutes(item.budget_minutes) && (
                                             <Text style={[styles.itemBadge, savedId === item.id && styles.itemBadgeSaved]}>

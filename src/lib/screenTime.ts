@@ -184,9 +184,9 @@ export async function clearAllLocalData(): Promise<void> {
 }
 
 // 예산 맵을 App Group UserDefaults에 동기화 (Extension 백그라운드 알림용)
-// budgetMap: { app_name → { budget: number, display?: string } }
+// budgetMap: { app_name → { budget: number } }
 export async function syncBudgetMap(
-  budgetMap: Record<string, { budget: number; display?: string }>
+  budgetMap: Record<string, { budget: number }>
 ): Promise<void> {
   if (!hasModule()) return;
   try {
