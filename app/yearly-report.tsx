@@ -45,7 +45,7 @@ export default function YearlyReportScreen() {
         if (usageRes.data) setUsageList(usageRes.data);
 
         if (prevUsageRes.data && settingsRes.data) {
-            const prevDays = 365;
+            const prevDays = new Date(year - 1, 1, 29).getDate() === 29 ? 366 : 365;
             const prevLoss = prevUsageRes.data.filter(u => u.category === '소비').reduce((s, u) => s + u.duration_minutes, 0);
             const prevInvest = prevUsageRes.data.filter(u => u.category === '투자').reduce((s, u) => s + u.duration_minutes, 0);
             const prevEssential = prevUsageRes.data.filter(u => u.category === '필수').reduce((s, u) => s + u.duration_minutes, 0);

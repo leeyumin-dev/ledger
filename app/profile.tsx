@@ -31,11 +31,13 @@ export default function ProfileScreen() {
   const [trackedApps, setTrackedApps] = useState<string[]>([]);  // token keys
   const [nameMap, setNameMapState] = useState<Record<string, string>>({});
   const [picking, setPicking] = useState(false);
+  const [orphanedApps, setOrphanedApps] = useState<string[]>([]);  // Supabase에는 있지만 로컬 토큰 없는 앱
 
-  // 이름 입력 모달 (앱 추가 시 필수)
+  // 이름 입력 (앱 추가 / 재선택 시 필수)
   const [pendingTokenKeys, setPendingTokenKeys] = useState<string[]>([]);
   const [nameInputs, setNameInputs] = useState<Record<string, string>>({});
   const [savingNames, setSavingNames] = useState(false);
+  const [reselecting, setReselecting] = useState<string | null>(null);
 
   const appStateRef = useRef(AppState.currentState);
 
@@ -122,11 +124,27 @@ export default function ProfileScreen() {
 
   // 추적 앱 관리 모달 열기
   async function handleOpenAppPicker() {
-    const status = await getMonitoringStatus();
+    const [status, map] = await Promise.all([
+      getMonitoringStatus(),
+      getNameMap(),
+    ]);
     const keys = status?.appList ?? [];
     setTrackedApps(keys);
-    const map = await getNameMap();
     setNameMapState(map);
+
+    // Supabase에 있지만 로컬 토큰 없는 앱 = 재선택 필요
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      const { data } = await supabase
+        .from('app_categories')
+        .select('app_name')
+        .eq('user_id', user.id);
+      const localNames = new Set(keys.map(k => map[k]).filter(Boolean));
+      setOrphanedApps(
+        (data ?? []).map(d => d.app_name).filter(n => !localNames.has(n))
+      );
+    }
+
     setAppPickerVisible(true);
   }
 
@@ -160,6 +178,36 @@ export default function ProfileScreen() {
     );
   }
 
+  // 재선택 필요 앱 → picker → 기존 이름 자동 채움
+  async function handleReselect(appName: string) {
+    setPicking(true);
+    const result = await presentPickerForToken();
+    setPicking(false);
+    if (result === 'cancelled') return;
+    if (result === 'category_only') {
+      Alert.alert('개별 앱을 선택해주세요', '카테고리를 펼쳐서 추적할 앱을 개별로 선택해주세요.');
+      return;
+    }
+
+    const newKeys: string[] = [];
+    for (let i = 0; i < result.count; i++) {
+      const newKey = await confirmPendingTokenAuto(i);
+      if (newKey) newKeys.push(newKey);
+    }
+
+    if (newKeys.length === 0) {
+      Alert.alert('이미 추가됨', '선택한 앱이 이미 추적 중이에요.');
+      return;
+    }
+
+    // 기존 이름으로 자동 채움 (첫 번째 키에만)
+    const prefill: Record<string, string> = {};
+    prefill[newKeys[0]] = appName;
+    setNameInputs(prefill);
+    setReselecting(appName);
+    setPendingTokenKeys(newKeys);
+  }
+
   // "앱 추가" → picker → 이름 입력 (필수)
   async function handleAddApp() {
     setPicking(true);
@@ -184,6 +232,15 @@ export default function ProfileScreen() {
     }
     setNameInputs({});
     setPendingTokenKeys(newKeys);
+  }
+
+  async function cancelNameInput() {
+    for (const key of pendingTokenKeys) {
+      await removeAppToken(key);
+    }
+    setPendingTokenKeys([]);
+    setNameInputs({});
+    setReselecting(null);
   }
 
   async function saveNames() {
@@ -228,6 +285,10 @@ export default function ProfileScreen() {
         return next;
       });
       await startMonitoring();
+      if (reselecting) {
+        setOrphanedApps(prev => prev.filter(n => n !== reselecting));
+        setReselecting(null);
+      }
     } finally {
       setSavingNames(false);
       setPendingTokenKeys([]);
@@ -416,109 +477,129 @@ export default function ProfileScreen() {
         visible={appPickerVisible}
         animationType="slide"
         presentationStyle="pageSheet"
-        onRequestClose={() => setAppPickerVisible(false)}
-      >
-        <View style={styles.modalContainer}>
-          <View style={styles.modalHeader}>
-            <View style={{ width: 40 }} />
-            <Text style={styles.modalTitle}>추적 앱 관리</Text>
-            <TouchableOpacity onPress={() => setAppPickerVisible(false)}>
-              <Text style={styles.modalDone}>닫기</Text>
-            </TouchableOpacity>
-          </View>
-
-          <ScrollView contentContainerStyle={styles.modalContent}>
-            {trackedApps.length === 0 ? (
-              <Text style={styles.emptyText}>추적 중인 앱이 없어요</Text>
-            ) : (
-              <View style={styles.trackedList}>
-                {trackedApps.map((key, i) => (
-                  <View
-                    key={key}
-                    style={[styles.trackedRow, i < trackedApps.length - 1 && styles.trackedRowBorder]}
-                  >
-                    <Text style={styles.trackedName}>{nameMap[key] ?? key}</Text>
-                    <TouchableOpacity
-                      onPress={() => handleRemoveApp(key)}
-                      disabled={picking}
-                      style={styles.removeBtn}
-                    >
-                      <Text style={styles.removeBtnText}>✕</Text>
-                    </TouchableOpacity>
-                  </View>
-                ))}
-              </View>
-            )}
-
-            <TouchableOpacity
-              style={[styles.addBtn, picking && { opacity: 0.4 }]}
-              onPress={handleAddApp}
-              disabled={picking}
-            >
-              <Text style={styles.addBtnText}>+ 앱 추가</Text>
-            </TouchableOpacity>
-
-            <View style={{ height: 40 }} />
-          </ScrollView>
-        </View>
-      </Modal>
-
-      {/* 앱 이름 입력 모달 (필수) */}
-      <Modal
-        visible={pendingTokenKeys.length > 0}
-        animationType="slide"
-        presentationStyle="pageSheet"
-        onRequestClose={() => {}}
+        onRequestClose={pendingTokenKeys.length > 0 ? cancelNameInput : () => setAppPickerVisible(false)}
       >
         <KeyboardAvoidingView
           style={{ flex: 1, backgroundColor: '#0f0f0f' }}
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         >
           <View style={styles.modalHeader}>
-            <View style={{ width: 40 }} />
-            <Text style={styles.modalTitle}>앱 이름 입력</Text>
-            <View style={{ width: 40 }} />
+            {pendingTokenKeys.length > 0 ? (
+              <TouchableOpacity onPress={cancelNameInput}>
+                <Text style={styles.modalDone}>취소</Text>
+              </TouchableOpacity>
+            ) : (
+              <View style={{ width: 40 }} />
+            )}
+            <Text style={styles.modalTitle}>
+              {pendingTokenKeys.length > 0 ? '앱 이름 입력' : '추적 앱 관리'}
+            </Text>
+            {pendingTokenKeys.length > 0 ? (
+              <View style={{ width: 40 }} />
+            ) : (
+              <TouchableOpacity onPress={() => setAppPickerVisible(false)}>
+                <Text style={styles.modalDone}>닫기</Text>
+              </TouchableOpacity>
+            )}
           </View>
 
-          <Text style={styles.nicknameModalHint}>
-            앱 이름을 직접 입력해주세요{'\n'}
-            <Text style={{ color: '#5a5754' }}>예: 유튜브, 인스타그램</Text>
-          </Text>
-
-          <ScrollView contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 32 }}>
-            {pendingTokenKeys.map((key, i) => (
-              <View key={key} style={styles.nicknameRow}>
-                <AppTokenLabel
-                  tokenKey={key}
-                  fontSize={18}
-                  iconOnly
-                  style={{ width: 30, height: 30, marginRight: 12 }}
-                />
-                <TextInput
-                  style={[styles.nicknameRowInput, { flex: 1 }]}
-                  placeholder="앱 이름 입력 (필수)"
-                  placeholderTextColor="#3a3836"
-                  value={nameInputs[key] ?? ''}
-                  onChangeText={text => setNameInputs(prev => ({ ...prev, [key]: text }))}
-                  maxLength={20}
-                  returnKeyType={i < pendingTokenKeys.length - 1 ? 'next' : 'done'}
-                  autoFocus={i === 0}
-                />
-              </View>
-            ))}
-          </ScrollView>
-
-          <View style={styles.nicknameModalActions}>
-            <TouchableOpacity
-              style={[styles.nicknameSaveBtn, savingNames && { opacity: 0.5 }]}
-              onPress={saveNames}
-              disabled={savingNames}
-            >
-              <Text style={styles.nicknameSaveText}>
-                {savingNames ? '저장 중...' : '저장하기'}
+          {pendingTokenKeys.length > 0 ? (
+            <>
+              <Text style={styles.nicknameModalHint}>
+                앱 이름을 직접 입력해주세요{'\n'}
+                <Text style={{ color: '#5a5754' }}>예: 유튜브, 인스타그램</Text>
               </Text>
-            </TouchableOpacity>
-          </View>
+              <ScrollView contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 32 }}>
+                {pendingTokenKeys.map((key, i) => (
+                  <View key={key} style={styles.nicknameRow}>
+                    <AppTokenLabel
+                      tokenKey={key}
+                      fontSize={18}
+                      iconOnly
+                      style={{ width: 30, height: 30, marginRight: 12 }}
+                    />
+                    <TextInput
+                      style={[styles.nicknameRowInput, { flex: 1 }]}
+                      placeholder="앱 이름 입력 (필수)"
+                      placeholderTextColor="#3a3836"
+                      value={nameInputs[key] ?? ''}
+                      onChangeText={text => setNameInputs(prev => ({ ...prev, [key]: text }))}
+                      maxLength={20}
+                      returnKeyType={i < pendingTokenKeys.length - 1 ? 'next' : 'done'}
+                      autoFocus={i === 0}
+                    />
+                  </View>
+                ))}
+                <TouchableOpacity
+                  style={[styles.nicknameSaveBtn, savingNames && { opacity: 0.5 }, { marginTop: 24 }]}
+                  onPress={saveNames}
+                  disabled={savingNames}
+                >
+                  <Text style={styles.nicknameSaveText}>
+                    {savingNames ? '저장 중...' : '저장하기'}
+                  </Text>
+                </TouchableOpacity>
+              </ScrollView>
+            </>
+          ) : (
+            <ScrollView contentContainerStyle={styles.modalContent}>
+              {trackedApps.length === 0 && orphanedApps.length === 0 ? (
+                <Text style={styles.emptyText}>추적 중인 앱이 없어요</Text>
+              ) : (
+                <>
+                  {trackedApps.length > 0 && (
+                    <View style={styles.trackedList}>
+                      {trackedApps.map((key, i) => (
+                        <View
+                          key={key}
+                          style={[styles.trackedRow, i < trackedApps.length - 1 && styles.trackedRowBorder]}
+                        >
+                          <Text style={styles.trackedName}>{nameMap[key] ?? key}</Text>
+                          <TouchableOpacity
+                            onPress={() => handleRemoveApp(key)}
+                            disabled={picking}
+                            style={styles.removeBtn}
+                          >
+                            <Text style={styles.removeBtnText}>✕</Text>
+                          </TouchableOpacity>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                  {orphanedApps.length > 0 && (
+                    <>
+                      <Text style={styles.orphanedLabel}>재선택 필요</Text>
+                      <View style={styles.trackedList}>
+                        {orphanedApps.map((name, i) => (
+                          <View
+                            key={name}
+                            style={[styles.trackedRow, i < orphanedApps.length - 1 && styles.trackedRowBorder]}
+                          >
+                            <Text style={[styles.trackedName, { color: '#5a5754' }]}>{name}</Text>
+                            <TouchableOpacity
+                              onPress={() => handleReselect(name)}
+                              disabled={picking}
+                              style={styles.reselectBtn}
+                            >
+                              <Text style={styles.reselectBtnText}>재선택</Text>
+                            </TouchableOpacity>
+                          </View>
+                        ))}
+                      </View>
+                    </>
+                  )}
+                </>
+              )}
+              <TouchableOpacity
+                style={[styles.addBtn, picking && { opacity: 0.4 }]}
+                onPress={handleAddApp}
+                disabled={picking}
+              >
+                <Text style={styles.addBtnText}>+ 앱 추가</Text>
+              </TouchableOpacity>
+              <View style={{ height: 40 }} />
+            </ScrollView>
+          )}
         </KeyboardAvoidingView>
       </Modal>
     </View>
@@ -849,6 +930,27 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#5a5754',
   },
+  orphanedLabel: {
+    fontFamily: 'GeistMono_400Regular',
+    fontSize: 11,
+    color: '#5a5754',
+    marginTop: 20,
+    marginBottom: 8,
+    paddingHorizontal: 4,
+  },
+  reselectBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    marginLeft: 12,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#2a2826',
+  },
+  reselectBtnText: {
+    fontFamily: 'GeistMono_400Regular',
+    fontSize: 12,
+    color: '#e8410a',
+  },
   addBtn: {
     paddingVertical: 14,
     borderRadius: 10,
@@ -901,14 +1003,6 @@ const styles = StyleSheet.create({
     flex: 1,
     textAlign: 'right',
     padding: 0,
-  },
-  nicknameModalActions: {
-    flexDirection: 'row',
-    gap: 12,
-    paddingHorizontal: 24,
-    paddingVertical: 20,
-    borderTopWidth: 0.5,
-    borderTopColor: '#2a2826',
   },
   nicknameSkipBtn: {
     flex: 1,

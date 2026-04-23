@@ -97,7 +97,7 @@ class DeviceActivityMonitorExtension: DeviceActivityMonitor {
         checkBudgetAndNotify(appName: appName, usedMins: tMins, date: today)
     }
 
-    // MARK: - 예산 초과 알림
+    // MARK: - 예산 알림 (50% / 80% / 100%)
 
     private func checkBudgetAndNotify(appName: String, usedMins: Int, date: String) {
         guard let json = defaults?.string(forKey: "ledger_budget_map"),
@@ -105,38 +105,46 @@ class DeviceActivityMonitorExtension: DeviceActivityMonitor {
               let map  = try? JSONSerialization.jsonObject(with: data) as? [String: [String: Any]],
               let entry = map[appName],
               let budgetMins = entry["budget"] as? Int,
-              budgetMins > 0,
-              usedMins >= budgetMins
+              budgetMins > 0
         else { return }
-
-        // 오늘 이미 이 앱에 대해 알림 보냈으면 skip
-        let notifKey = "ledger_notif_sent_\(date)_\(appName)"
-        if defaults?.bool(forKey: notifKey) == true { return }
-        defaults?.set(true, forKey: notifKey)
-        defaults?.synchronize()
 
         let displayName = entry["display"] as? String
         let label = displayName?.isEmpty == false ? displayName! : appName
+        let budgetStr = formatMins(budgetMins)
 
-        let budgetStr  = formatMins(budgetMins)
-        let usedStr    = formatMins(usedMins)
+        let thresholds: [(ratio: Double, pct: Int)] = [(0.5, 50), (0.8, 80), (1.0, 100)]
 
-        let content = UNMutableNotificationContent()
-        content.title = "⚠️ \(label) 예산 초과"
-        content.body  = "오늘 \(budgetStr) 배정 중 \(usedStr)을 사용했어요."
-        content.sound = .default
+        for (ratio, pct) in thresholds {
+            guard Double(usedMins) >= Double(budgetMins) * ratio else { continue }
 
-        let request = UNNotificationRequest(
-            identifier: "ledger_budget_\(appName)_\(date)",
-            content: content,
-            trigger: nil
-        )
-        UNUserNotificationCenter.current().add(request) { error in
-            if let error = error {
-                logger.warning("알림 발송 실패: \(error.localizedDescription)")
+            let notifKey = "ledger_notif\(pct)_\(date)_\(appName)"
+            guard defaults?.bool(forKey: notifKey) != true else { continue }
+            defaults?.set(true, forKey: notifKey)
+            defaults?.synchronize()
+
+            let usedStr = formatMins(usedMins)
+            let content = UNMutableNotificationContent()
+            if pct >= 100 {
+                content.title = "⚠️ \(label) 예산 초과"
+                content.body  = "오늘 \(budgetStr) 배정 중 \(usedStr)을 사용했어요."
+            } else {
+                content.title = "\(label) 예산 \(pct)% 소진"
+                content.body  = "\(budgetStr) 배정 중 \(usedStr) 사용. 조금만 더 아껴요."
             }
+            content.sound = .default
+
+            let request = UNNotificationRequest(
+                identifier: "ledger_budget_\(appName)_\(date)_\(pct)",
+                content: content,
+                trigger: nil
+            )
+            UNUserNotificationCenter.current().add(request) { error in
+                if let error = error {
+                    logger.warning("알림 발송 실패: \(error.localizedDescription)")
+                }
+            }
+            logger.info("\(appName) \(pct)% 알림 발송: \(usedMins)/\(budgetMins)분")
         }
-        logger.info("\(appName) 예산 초과 알림 발송: \(usedMins)/\(budgetMins)분")
     }
 
     private func formatMins(_ mins: Int) -> String {

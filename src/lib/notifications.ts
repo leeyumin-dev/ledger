@@ -1,9 +1,4 @@
 import * as Notifications from 'expo-notifications';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-
-function isTokenKey(name: string) {
-  return /^app_\d+$/.test(name);
-}
 
 const WEEKLY_NOTIF_ID = 'ledger_weekly_settlement';
 
@@ -60,45 +55,3 @@ export async function cancelGoalCheckNotification() {
   await Notifications.cancelScheduledNotificationAsync(GOAL_NOTIF_ID);
 }
 
-// 오늘 이미 80% 알림 보낸 앱인지 확인
-function notifiedKey(date: string, appName: string) {
-  return `ledger_notif80_${date}_${appName}`;
-}
-
-export async function checkAndNotifyBudget(
-  usageList: { app_name: string; duration_minutes: number; category: string }[],
-  budgetMap: Record<string, { budget_minutes: number; display_name?: string }>,
-  date: string
-) {
-  for (const usage of usageList) {
-    const budget = budgetMap[usage.app_name];
-    if (!budget || budget.budget_minutes <= 0) continue;
-
-    const ratio = usage.duration_minutes / budget.budget_minutes;
-    if (ratio < 0.8) continue;
-
-    const key = notifiedKey(date, usage.app_name);
-    const alreadyNotified = await AsyncStorage.getItem(key);
-    if (alreadyNotified) continue;
-
-    const pct = Math.round(ratio * 100);
-    const tokenNum = usage.app_name.match(/^app_(\d+)$/)?.[1];
-    const fallback = tokenNum != null ? `추적 앱 ${Number(tokenNum) + 1}` : (usage.app_name);
-    const label = budget.display_name ?? fallback;
-    const isOver = ratio >= 1.0;
-    const usedStr = `${Math.floor(usage.duration_minutes / 60)}h ${usage.duration_minutes % 60}m`;
-    const budgetStr = `${Math.floor(budget.budget_minutes / 60)}h ${budget.budget_minutes % 60}m`;
-
-    await Notifications.scheduleNotificationAsync({
-      content: {
-        title: isOver ? `⚠️ ${label} 예산 초과` : `${label} 예산 ${pct}% 소진`,
-        body: isOver
-          ? `오늘 ${budgetStr} 배정 중 ${usedStr}을 사용했어요.`
-          : `${budgetStr} 배정 중 ${usedStr} 사용. 조금만 더 아껴요.`,
-      },
-      trigger: null,
-    });
-
-    await AsyncStorage.setItem(key, '1');
-  }
-}

@@ -344,6 +344,7 @@ class ScreenTimeModule: NSObject {
         )
 
         // 오늘 이미 기록된 사용량 로드 (이미 지나간 임계값은 등록 생략)
+        // ledger_usage_{date}의 키는 표시 이름(유튜브 등)이므로 name_map으로 변환해서 조회
         let fmt = DateFormatter()
         fmt.dateFormat = "yyyy-MM-dd"
         fmt.timeZone = .current
@@ -354,6 +355,7 @@ class ScreenTimeModule: NSObject {
            let map  = try? JSONSerialization.jsonObject(with: data) as? [String: Int] {
             todayUsage = map
         }
+        let nameMap = loadNameMap()  // { "app_0": "유튜브" }
 
         var events: [DeviceActivityEvent.Name: DeviceActivityEvent] = [:]
         var appMapDict: [String: String] = [:]
@@ -368,8 +370,9 @@ class ScreenTimeModule: NSObject {
 
             if let token = sel.applicationTokens.first {
                 appMapDict[String(appIndex)] = appKey
-                // 이미 기록된 분수 다음 임계값부터만 등록 (10분 단위, 최대 720분)
-                let recorded = todayUsage[appKey] ?? 0
+                // todayUsage 키는 표시 이름 — token key가 아닌 display name으로 조회
+                let displayName = nameMap[appKey] ?? appKey
+                let recorded = todayUsage[displayName] ?? 0
                 let startMins = ((recorded / 10) + 1) * 10
                 for mins in stride(from: startMins, through: 720, by: 10) {
                     let name = DeviceActivityEvent.Name("idx_\(appIndex)_t\(mins)")
@@ -381,7 +384,8 @@ class ScreenTimeModule: NSObject {
                 appIndex += 1
             } else if let catToken = sel.categoryTokens.first {
                 appMapDict["cat_\(catIndex)"] = appKey
-                let recorded = todayUsage[appKey] ?? 0
+                let displayName = nameMap[appKey] ?? appKey
+                let recorded = todayUsage[displayName] ?? 0
                 let startMins = ((recorded / 10) + 1) * 10
                 for mins in stride(from: startMins, through: 720, by: 10) {
                     let name = DeviceActivityEvent.Name("cat_\(catIndex)_t\(mins)")

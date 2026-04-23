@@ -11,6 +11,25 @@ import { AppHeader } from '../../src/components/AppHeader';
 import { isTokenKey, getMonitoringStatus } from '../../src/lib/screenTime';
 import { checkAndAwardBadges, getEarnedBadges, Badge } from '../../src/lib/badges';
 
+const CALENDAR_THEME = {
+  backgroundColor: '#0f0f0f',
+  calendarBackground: '#0f0f0f',
+  textSectionTitleColor: '#5a5754',
+  selectedDayBackgroundColor: '#e8410a',
+  selectedDayTextColor: '#ffffff',
+  todayTextColor: '#e8410a',
+  dayTextColor: '#f0ede8',
+  textDisabledColor: '#3a3836',
+  monthTextColor: '#f0ede8',
+  arrowColor: '#e8410a',
+  textMonthFontFamily: 'GeistMono_500Medium',
+  textDayFontFamily: 'GeistMono_400Regular',
+  textDayHeaderFontFamily: 'GeistMono_400Regular',
+  textDayFontSize: 13,
+  textMonthFontSize: 16,
+  textDayHeaderFontSize: 11,
+};
+
 type WeeklyRecord = {
   id: string;
   period: string;
@@ -276,24 +295,7 @@ export default function ArchiveScreen() {
 
             markingType="custom"
             markedDates={markedDates}
-            theme={{
-              backgroundColor: '#0f0f0f',
-              calendarBackground: '#0f0f0f',
-              textSectionTitleColor: '#5a5754',
-              selectedDayBackgroundColor: '#e8410a',
-              selectedDayTextColor: '#ffffff',
-              todayTextColor: '#e8410a',
-              dayTextColor: '#f0ede8',
-              textDisabledColor: '#3a3836',
-              monthTextColor: '#f0ede8',
-              arrowColor: '#e8410a',
-              textMonthFontFamily: 'GeistMono_500Medium',
-              textDayFontFamily: 'GeistMono_400Regular',
-              textDayHeaderFontFamily: 'GeistMono_400Regular',
-              textDayFontSize: 13,
-              textMonthFontSize: 16,
-              textDayHeaderFontSize: 11,
-            }}
+            theme={CALENDAR_THEME}
           />
 
           {/* 범례 */}

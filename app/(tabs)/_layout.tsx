@@ -1,6 +1,5 @@
 import { Tabs } from 'expo-router';
 import { View } from 'react-native';
-// import AdBanner from '../../src/components/BannerAd';
 
 export default function TabLayout() {
   return (
@@ -26,11 +25,6 @@ export default function TabLayout() {
         <Tabs.Screen name="trends" options={{ title: '추세' }} />
         <Tabs.Screen name="settings" options={{ href: null }} />
       </Tabs>
-
-      {/* 탭바 위 배너 광고 */}
-      {/* <View style={{ position: 'absolute', bottom: 49, left: 0, right: 0, alignItems: 'center' }}>
-        <AdBanner />
-      </View> */}
     </View>
   );
 }

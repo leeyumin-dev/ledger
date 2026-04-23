@@ -18,9 +18,6 @@ SplashScreen.preventAutoHideAsync();
 // 유저 비연동 AsyncStorage 키 정리 (계정 전환 / 로그아웃 시 호출)
 async function _clearNonUserScopedAsyncStorage() {
   await AsyncStorage.removeItem('ledger_last_sync_date');
-  const allKeys = await AsyncStorage.getAllKeys();
-  const staleKeys = allKeys.filter(k => k.startsWith('ledger_notif80_'));
-  if (staleKeys.length > 0) await AsyncStorage.multiRemove(staleKeys);
 }
 
 Notifications.setNotificationHandler({
@@ -52,9 +49,8 @@ export default function RootLayout() {
     if (!session) return;
 
     hasPermission().then(async permitted => {
-      if (!permitted) { console.log('[Layout] ScreenTime 권한 없음'); return; }
-      const ok = await startMonitoring();
-      console.log('[Layout] startMonitoring:', ok);
+      if (!permitted) return;
+      await startMonitoring();
     });
 
     scheduleGoalCheckNotification();
@@ -80,9 +76,13 @@ export default function RootLayout() {
         setSession(session);
 
         if (session && _event === 'SIGNED_IN') {
-          // 이전 로그인 계정과 다른 경우 → 로컬 데이터 즉시 클리어
           const prevUserId = await AsyncStorage.getItem('ledger_current_user_id');
-          if (prevUserId && prevUserId !== session.user.id) {
+
+          // 같은 유저가 앱을 재시작한 경우 — getSession()이 이미 처리했으므로 스킵
+          if (prevUserId === session.user.id) return;
+
+          // 계정 전환인 경우 → 로컬 데이터 클리어
+          if (prevUserId) {
             await stopMonitoring();
             await clearAllLocalData();
             await _clearNonUserScopedAsyncStorage();
@@ -150,13 +150,7 @@ export default function RootLayout() {
   }, [fontsLoaded, initialized, session, isNewUser]);
 
   useEffect(() => {
-    async function requestNotificationPermission() {
-      const { status } = await Notifications.requestPermissionsAsync();
-      if (status !== 'granted') {
-        console.log('알림 권한 거부됨');
-      }
-    }
-    requestNotificationPermission();
+    Notifications.requestPermissionsAsync();
   }, []);
 
   if (!fontsLoaded || !initialized) return null;

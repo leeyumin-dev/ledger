@@ -25,13 +25,12 @@ export function useAutoSync() {
   // 특정 날짜의 사용량을 Supabase에 업로드
   const syncDate = useCallback(async (dateStr: string) => {
     const permitted = await hasPermission();
-    if (!permitted) { console.log('[AutoSync] 권한 없음'); return; }
+    if (!permitted) return;
 
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) { console.log('[AutoSync] 유저 없음'); return; }
+    if (!user) return;
 
     const usageList = await getDailyUsage(dateStr);
-    console.log(`[AutoSync] getDailyUsage(${dateStr}):`, JSON.stringify(usageList));
     if (usageList.length === 0) return;
 
     // app_categories에서 앱 이름 → { category, bundle_id } 매핑
@@ -79,12 +78,7 @@ export function useAutoSync() {
       .from('app_usage')
       .upsert(rows, { onConflict: 'user_id,date,app_name' });
 
-    if (error) {
-      console.warn('[AutoSync] 업로드 실패:', error.message);
-      return;
-    }
-
-    console.log(`[AutoSync] ${dateStr} — ${rows.length}개 앱 동기화 완료`);
+    if (error) return;
 
     // 동기화 완료 → UserDefaults 버퍼 삭제 (오늘 날짜 제외 — Extension이 계속 써야 함)
     if (dateStr !== toLocalDateStr()) {
