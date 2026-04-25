@@ -1,12 +1,11 @@
 import { useState, useCallback } from 'react';
 import {
     View, Text, StyleSheet, ScrollView,
-    TouchableOpacity, Alert, Modal,
-    TextInput, KeyboardAvoidingView, Platform, Keyboard, ActivityIndicator
+    TouchableOpacity, Alert,
+    TextInput, Keyboard, ActivityIndicator
 } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { supabase } from '../src/lib/supabase';
-import { DEFAULT_APPS } from '../src/lib/defaultApps';
 import { colors, font, fontSize, spacing, radius } from '../src/lib/theme';
 
 type AppCategory = {
@@ -25,9 +24,6 @@ const PRESET_LIMITS = [120, 300, 420, 600]; // 2h, 5h, 7h, 10h (소비 주간 �
 export default function CategorySettingsScreen() {
     const [list, setList] = useState<AppCategory[]>([]);
     const [loading, setLoading] = useState(true);
-    const [modalVisible, setModalVisible] = useState(false);
-    const [newAppName, setNewAppName] = useState('');
-    const [newCategory, setNewCategory] = useState('소비');
 
     // 예산 커스텀 입력
     const [customInputId, setCustomInputId] = useState<string | null>(null);
@@ -79,36 +75,6 @@ export default function CategorySettingsScreen() {
         const PRESET_LIMIT_VALUES = [0, 120, 300, 420, 600];
         setCustomSetIds(mapped.filter(d => d.category === '소비' && !PRESET_BUDGET_VALUES.includes(d.budget_minutes ?? 0)).map(d => d.id));
         setGoalCustomSetIds(mapped.filter(d => d.goal_minutes > 0 && !PRESET_GOAL_VALUES.includes(d.goal_minutes ?? 0) && !PRESET_LIMIT_VALUES.includes(d.goal_minutes ?? 0)).map(d => d.id));
-    }
-
-    async function addApp() {
-        if (!newAppName.trim()) {
-            Alert.alert('입력 오류', '앱 이름을 입력해주세요.');
-            return;
-        }
-
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return;
-
-        const { error } = await supabase
-            .from('app_categories')
-            .upsert({
-                user_id: user.id,
-                app_name: newAppName.trim(),
-                category: newCategory,
-                budget_minutes: 0,
-                goal_minutes: 0,
-            }, { onConflict: 'user_id,app_name' });
-
-        if (error) {
-            Alert.alert('오류', '저장에 실패했어요.');
-            return;
-        }
-
-        setNewAppName('');
-        setNewCategory('소비');
-        setModalVisible(false);
-        refreshList();
     }
 
     async function updateCategory(id: string, category: string) {
@@ -455,79 +421,6 @@ export default function CategorySettingsScreen() {
                 <View style={{ height: 100 }} />
 
             </ScrollView>
-
-            <TouchableOpacity style={styles.fab} onPress={() => setModalVisible(true)}>
-                <Text style={styles.fabText}>＋</Text>
-            </TouchableOpacity>
-
-            <Modal visible={modalVisible} transparent animationType="slide">
-                <KeyboardAvoidingView
-                    behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-                    style={{ flex: 1 }}
-                >
-                    <TouchableOpacity
-                        style={styles.modalOverlay}
-                        activeOpacity={1}
-                        onPress={() => setModalVisible(false)}
-                    >
-                        <TouchableOpacity activeOpacity={1} onPress={() => { }}>
-                            <View style={styles.modalBox}>
-                                <Text style={styles.modalTitle}>앱 추가</Text>
-                                <Text style={styles.quickLabel}>자주 쓰는 앱</Text>
-                                <View style={[styles.quickRow, { marginBottom: 16 }]}>
-                                    {DEFAULT_APPS.map(app => {
-                                        const isRegistered = list.some(item => item.app_name === app.app_name);
-                                        return (
-                                            <TouchableOpacity
-                                                key={app.app_name}
-                                                style={[styles.defaultAppBtn, isRegistered && styles.defaultAppBtnRegistered]}
-                                                onPress={() => {
-                                                    if (isRegistered) return;
-                                                    setNewAppName(app.app_name);
-                                                    setNewCategory(app.category);
-                                                }}
-                                                disabled={isRegistered}
-                                            >
-                                                <Text style={[styles.defaultAppBtnText, isRegistered && styles.defaultAppBtnTextRegistered]}>
-                                                    {isRegistered ? `✓ ${app.app_name}` : app.app_name}
-                                                </Text>
-                                            </TouchableOpacity>
-                                        );
-                                    })}
-                                </View>
-                                <Text style={styles.quickLabel}>직접 입력</Text>
-                                <TextInput
-                                    style={styles.modalInput}
-                                    placeholder="앱 이름 (예: 유튜브)"
-                                    placeholderTextColor={colors.textMuted}
-                                    value={newAppName}
-                                    onChangeText={setNewAppName}
-                                    autoFocus
-                                />
-                                <View style={styles.catRow}>
-                                    {CATEGORIES.map(cat => (
-                                        <TouchableOpacity
-                                            key={cat}
-                                            style={[styles.catBtn, newCategory === cat && styles.catBtnActive]}
-                                            onPress={() => setNewCategory(cat)}
-                                        >
-                                            <Text style={[styles.catBtnText, newCategory === cat && styles.catBtnTextActive]}>
-                                                {cat}
-                                            </Text>
-                                        </TouchableOpacity>
-                                    ))}
-                                </View>
-                                <TouchableOpacity style={styles.modalSubmitBtn} onPress={addApp}>
-                                    <Text style={styles.modalSubmitText}>추가하기</Text>
-                                </TouchableOpacity>
-                                <TouchableOpacity style={styles.modalCancelBtn} onPress={() => setModalVisible(false)}>
-                                    <Text style={styles.modalCancelText}>취소</Text>
-                                </TouchableOpacity>
-                            </View>
-                        </TouchableOpacity>
-                    </TouchableOpacity>
-                </KeyboardAvoidingView>
-            </Modal>
         </View>
     );
 }
@@ -614,11 +507,6 @@ const styles = StyleSheet.create({
     catBtnRow: {
         flexDirection: 'row',
         gap: 6,
-    },
-    catRow: {
-        flexDirection: 'row',
-        gap: spacing.sm,
-        marginBottom: spacing.md,
     },
     catBtn: {
         paddingHorizontal: 12,
@@ -752,104 +640,5 @@ const styles = StyleSheet.create({
         color: colors.textDisabled,
         textAlign: 'center',
         marginTop: spacing.sm,
-    },
-    fab: {
-        position: 'absolute',
-        bottom: 32,
-        right: spacing.lg,
-        width: 52,
-        height: 52,
-        borderRadius: 26,
-        backgroundColor: colors.accent,
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    fabText: {
-        fontSize: 24,
-        color: 'white',
-        lineHeight: 28,
-    },
-    modalOverlay: {
-        flex: 1,
-        backgroundColor: 'rgba(0,0,0,0.7)',
-        justifyContent: 'flex-end',
-    },
-    modalBox: {
-        backgroundColor: colors.bgSurface,
-        borderTopLeftRadius: radius.xl,
-        borderTopRightRadius: radius.xl,
-        padding: spacing.lg,
-    },
-    modalTitle: {
-        fontFamily: font.medium,
-        fontSize: fontSize.lg,
-        color: colors.textPrimary,
-        marginBottom: spacing.md,
-    },
-    modalInput: {
-        backgroundColor: colors.bgBase,
-        borderWidth: 1,
-        borderColor: colors.border,
-        borderRadius: radius.md,
-        padding: 14,
-        color: colors.textPrimary,
-        fontFamily: font.regular,
-        fontSize: fontSize.md,
-        marginBottom: spacing.sm,
-    },
-    modalSubmitBtn: {
-        backgroundColor: colors.accent,
-        borderRadius: radius.md,
-        padding: spacing.md,
-        alignItems: 'center',
-        marginBottom: spacing.sm,
-    },
-    modalSubmitText: {
-        fontFamily: font.medium,
-        fontSize: fontSize.md,
-        color: '#ffffff',
-    },
-    modalCancelBtn: {
-        padding: spacing.sm,
-        alignItems: 'center',
-    },
-    modalCancelText: {
-        fontFamily: font.regular,
-        fontSize: 13,
-        color: colors.textMuted,
-    },
-    quickLabel: {
-        fontFamily: font.regular,
-        fontSize: fontSize.xs,
-        color: colors.textMuted,
-        letterSpacing: 1.2,
-        textTransform: 'uppercase',
-        marginBottom: spacing.sm,
-    },
-    quickRow: {
-        flexDirection: 'row',
-        flexWrap: 'wrap',
-        gap: 6,
-    },
-    defaultAppBtn: {
-        paddingHorizontal: 12,
-        paddingVertical: 7,
-        borderRadius: 20,
-        borderWidth: 1,
-        borderColor: colors.border,
-        backgroundColor: colors.bgBase,
-    },
-    defaultAppBtnRegistered: {
-        borderColor: colors.textDisabled,
-        backgroundColor: colors.bgBase,
-        opacity: 0.4,
-    },
-    defaultAppBtnText: {
-        fontFamily: font.regular,
-        fontSize: fontSize.sm,
-        color: colors.textSecondary,
-    },
-    defaultAppBtnTextRegistered: {
-        color: colors.textMuted,
     },
 });

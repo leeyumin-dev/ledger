@@ -43,7 +43,6 @@ export const font = {
   extraBold: 'GeistMono_800ExtraBold',
 } as const;
 
-// 6단계 크기 체계
 export const fontSize = {
   xs:   10,  // 레이블, 뱃지, 워터마크
   sm:   12,  // 보조 텍스트, 힌트
@@ -72,4 +71,38 @@ export const radius = {
   md:  12,
   lg:  16,
   xl:  20,
+  '2xl': 24, // 리뉴얼된 카드용
+} as const;
+
+// ─── Shadows ──────────────────────────────────────────────────────────────────
+
+export const shadows = {
+  soft: {
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  medium: {
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 6,
+  },
+  strong: {
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.25,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+} as const;
+
+// ─── Gradients ────────────────────────────────────────────────────────────────
+
+export const gradients = {
+  primaryGlow: ['rgba(232,65,10,0.12)', 'transparent'] as const,
+  cardHighlight: ['rgba(255,255,255,0.03)', 'transparent'] as const,
 } as const;

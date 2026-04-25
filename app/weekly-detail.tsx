@@ -1,11 +1,16 @@
 import { useState, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView,
-  TouchableOpacity
+  TouchableOpacity, Dimensions
 } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
 import { supabase } from '../src/lib/supabase';
-import { colors, font, fontSize, spacing, radius } from '../src/lib/theme';
+import { colors, font, fontSize, spacing, radius, shadows, gradients } from '../src/lib/theme';
+import { getWeeklyPersona, Persona } from '../src/lib/personas';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 type UsageItem = {
   id: string;
@@ -20,16 +25,18 @@ export default function WeeklyDetailScreen() {
   const [usageList, setUsageList] = useState<UsageItem[]>([]);
   const [sleepHours, setSleepHours] = useState(7.5);
   const [workHours, setWorkHours] = useState(8.0);
+  const [loading, setLoading] = useState(true);
+  const [persona, setPersona] = useState<Persona | null>(null);
 
   useEffect(() => {
     loadData();
   }, [week]);
 
   async function loadData() {
+    setLoading(true);
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    // 주차 레이블에서 날짜 범위 계산
     const { start, end } = getWeekRange(week);
 
     const [settingsRes, usageRes] = await Promise.all([
@@ -37,180 +44,208 @@ export default function WeeklyDetailScreen() {
       supabase.from('app_usage').select('*').eq('user_id', user.id).gte('date', start).lte('date', end).order('date', { ascending: false }),
     ]);
 
+    let currentSl = 7.5;
+    let currentWk = 8.0;
+
     if (settingsRes.data) {
-      setSleepHours(settingsRes.data.sleep_hours);
-      setWorkHours(settingsRes.data.work_hours);
+      currentSl = settingsRes.data.sleep_hours;
+      currentWk = settingsRes.data.work_hours;
+      setSleepHours(currentSl);
+      setWorkHours(currentWk);
     }
-    if (usageRes.data) {
-      setUsageList(usageRes.data);
-    }
+    
+    const usageData = usageRes.data ?? [];
+    setUsageList(usageData);
+
+    // 데이터 계산
+    const lossMin = usageData.filter(u => u.category === '소비').reduce((s, u) => s + u.duration_minutes, 0);
+    const investMin = usageData.filter(u => u.category === '투자').reduce((s, u) => s + u.duration_minutes, 0);
+    const essentialMin = usageData.filter(u => u.category === '필수').reduce((s, u) => s + u.duration_minutes, 0);
+    
+    const totalDispMin = (24 - currentSl - currentWk) * 7 * 60;
+    const netMin = totalDispMin - lossMin - essentialMin + investMin;
+    
+    // 페르소나 분석용 데이터
+    const analysis = {
+      isProfit: netMin >= 0,
+      netMinutes: netMin,
+      assetFormationRate: totalDispMin > 0 ? (investMin / totalDispMin) * 100 : 0,
+      consumptionRate: totalDispMin > 0 ? (lossMin / totalDispMin) * 100 : 0,
+      workRate: (currentWk * 7 * 60) / (24 * 7 * 60) * 100,
+      sleepRate: (currentSl * 7 * 60) / (24 * 7 * 60) * 100,
+    };
+
+    setPersona(getWeeklyPersona(analysis));
+    setLoading(false);
   }
 
   function getWeekRange(weekLabel: string) {
-    // "3월 4주차" → 해당 월의 N번째 월요일 기준 날짜 범위
     const now = new Date();
     const year = now.getFullYear();
     const match = weekLabel.match(/(\d+)월 (\d+)주차/);
     if (!match) return { start: '', end: '' };
-
-    const month = parseInt(match[1]) - 1; // 0-indexed
+    const month = parseInt(match[1]) - 1;
     const weekNum = parseInt(match[2]);
-
-    // 해당 월 1일의 요일로 첫 번째 월요일 날짜 계산
-    const firstDay = new Date(year, month, 1).getDay(); // 0=일
+    const firstDay = new Date(year, month, 1).getDay();
     const firstMondayDate = firstDay <= 1 ? 2 - firstDay : 9 - firstDay;
     const mondayDate = firstMondayDate + (weekNum - 1) * 7;
-
     const monday = new Date(year, month, mondayDate);
     const sunday = new Date(year, month, mondayDate + 6);
-
-    const fmt = (d: Date) =>
-      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-
-    return { start: fmt(monday), end: fmt(sunday) };
+    const f = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    return { start: f(monday), end: f(sunday) };
   }
 
-  // 카테고리별 합산
-  const lossItems    = usageList.filter(u => u.category === '소비');
-  const investItems  = usageList.filter(u => u.category === '투자');
-  const essentialItems = usageList.filter(u => u.category === '필수');
-
-  // 앱별로 합산
-  function groupByApp(items: UsageItem[]) {
-    const map: Record<string, number> = {};
-    items.forEach(item => {
-      map[item.app_name] = (map[item.app_name] || 0) + item.duration_minutes;
-    });
-    return Object.entries(map).sort((a, b) => b[1] - a[1]);
-  }
-
-  const lossMinutes     = lossItems.reduce((s, u) => s + u.duration_minutes, 0);
-  const investMinutes   = investItems.reduce((s, u) => s + u.duration_minutes, 0);
-  const essentialMinutes = essentialItems.reduce((s, u) => s + u.duration_minutes, 0);
-  const days = 7;
-  const totalDisposable = (24 - sleepHours - workHours) * days;
+  const lossMinutes = usageList.filter(u => u.category === '소비').reduce((s, u) => s + u.duration_minutes, 0);
+  const investMinutes = usageList.filter(u => u.category === '투자').reduce((s, u) => s + u.duration_minutes, 0);
+  const essentialMinutes = usageList.filter(u => u.category === '필수').reduce((s, u) => s + u.duration_minutes, 0);
+  const totalDisposable = (24 - sleepHours - workHours) * 7;
   const netMinutes = Math.round(totalDisposable * 60) - lossMinutes - essentialMinutes + investMinutes;
   const isProfit = netMinutes >= 0;
 
-  function fmt(m: number) {
-    return `${Math.floor(Math.abs(m) / 60)}h ${Math.abs(m) % 60}m`;
+  const topAssets = Object.entries(
+    usageList.filter(u => u.category === '투자').reduce((acc, curr) => {
+      acc[curr.app_name] = (acc[curr.app_name] || 0) + curr.duration_minutes;
+      return acc;
+    }, {} as Record<string, number>)
+  ).sort((a, b) => b[1] - a[1]).slice(0, 3);
+
+  function fmtTime(m: number) {
+    const absM = Math.abs(m);
+    const h = Math.floor(absM / 60);
+    const mm = absM % 60;
+    return `${h}h ${mm}m`;
   }
 
   return (
-    <ScrollView style={styles.container}>
+    <View style={styles.root}>
+      <LinearGradient
+        colors={isProfit ? ['rgba(74,222,128,0.12)', 'transparent'] : ['rgba(248,113,113,0.12)', 'transparent']}
+        style={styles.glow}
+        start={{ x: 0.5, y: 0 }}
+        end={{ x: 0.5, y: 1 }}
+      />
 
-      {/* 헤더 */}
-      <View style={styles.header}>
+      <View style={styles.navBar}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Text style={styles.backText}>← 보관함</Text>
+          <Ionicons name="chevron-back" size={24} color={colors.textPrimary} />
         </TouchableOpacity>
-        <Text style={styles.headerSub}>{week}</Text>
-        <Text style={styles.headerTitle}>주간 결산</Text>
+        <Text style={styles.navTitle}>주간 경영 보고서</Text>
+        <View style={{ width: 40 }} />
       </View>
 
-      <View style={styles.thickDivider} />
+      <ScrollView style={styles.container} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 60 }}>
+        
+        <View style={styles.reportHeader}>
+          <Text style={styles.reportPeriod}>{week}</Text>
+          {persona && (
+            <View style={[styles.personaTag, { borderColor: `${persona.color}40`, backgroundColor: `${persona.color}10` }]}>
+              <Text style={[styles.personaText, { color: persona.color }]}>{persona.emoji} {persona.label}</Text>
+            </View>
+          )}
+        </View>
 
-      {/* 주간 수입 */}
-      <Text style={styles.sectionLabel}>주간 가처분 시간</Text>
-      <Row label="1일 가처분 시간" value={`${(totalDisposable / 7).toFixed(1)}h`} />
-      <Row label="7일 합계" value={`${totalDisposable.toFixed(1)}h`} bold />
+        {/* 🏆 재무 선언 카드 */}
+        <View style={styles.statementCard}>
+          <Text style={styles.statementMsg}>
+            이번 주 당신의 시간 잔고는{'\n'}
+            <Text style={{ color: isProfit ? colors.profit : colors.loss, fontFamily: font.bold }}>
+              {isProfit ? '흑자' : '적자'}
+            </Text>를 기록했습니다.
+          </Text>
+          <Text style={[styles.netProfitVal, { color: isProfit ? colors.profit : colors.loss }]}>
+            {isProfit ? '＋' : '－'} {fmtTime(netMinutes)}
+          </Text>
+          <Text style={styles.netProfitLabel}>Weekly Net Profit / Loss</Text>
+          
+          {persona && (
+            <Text style={styles.personaDesc}>{persona.description}</Text>
+          )}
+        </View>
 
-      {/* 지출 */}
-      <Text style={[styles.sectionLabel, { marginTop: 16 }]}>시간 지출</Text>
-      {groupByApp(lossItems).length === 0
-        ? <Text style={styles.emptyRow}>지출 없음</Text>
-        : groupByApp(lossItems).map(([app, min]) => (
-          <Row key={app} label={app} value={fmt(min)} indent loss />
-        ))
-      }
-      <View style={styles.thinDivider} />
-      <Row label="총 지출" value={fmt(lossMinutes)} bold loss />
+        {/* 경영 지표 그리드 */}
+        <View style={styles.indicatorGrid}>
+          <View style={styles.indicatorCard}>
+            <Text style={styles.indLabel}>손익분기점</Text>
+            <Text style={styles.indValue}>{isProfit ? '달성 완료' : '미달성'}</Text>
+            <Text style={[styles.indStatus, { color: isProfit ? colors.profit : colors.loss }]}>
+              {isProfit ? '안정적 경영' : '지출 관리 필요'}
+            </Text>
+          </View>
+          <View style={styles.indicatorCard}>
+            <Text style={styles.indLabel}>자산 형성률</Text>
+            <Text style={styles.indValue}>{((investMinutes / (totalDisposable * 60)) * 100).toFixed(1)}%</Text>
+            <Text style={styles.indStatus}>
+              {(investMinutes / (totalDisposable * 60)) * 100 > 30 ? '매우 높음' : '보통'}
+            </Text>
+          </View>
+        </View>
 
-      {/* 투자 */}
-      <Text style={[styles.sectionLabel, { marginTop: 16 }]}>시간 투자</Text>
-      {groupByApp(investItems).length === 0
-        ? <Text style={styles.emptyRow}>투자 없음</Text>
-        : groupByApp(investItems).map(([app, min]) => (
-          <Row key={app} label={app} value={fmt(min)} indent profit />
-        ))
-      }
-      <View style={styles.thinDivider} />
-      <Row label="총 투자" value={fmt(investMinutes)} bold profit />
+        {/* 취득 자산 목록 */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionLabel}>Major Acquired Assets</Text>
+            <View style={styles.sectionLine} />
+          </View>
+          
+          <View style={styles.assetList}>
+            {topAssets.length > 0 ? topAssets.map(([name, time], idx) => (
+              <View key={name} style={styles.assetItem}>
+                <Text style={styles.assetRank}>0{idx + 1}</Text>
+                <Text style={styles.assetName} numberOfLines={1}>{name}</Text>
+                <Text style={styles.assetTime}>{fmtTime(time)}</Text>
+              </View>
+            )) : (
+              <Text style={styles.emptyText}>이번 주 취득한 자산이 없습니다.</Text>
+            )}
+          </View>
+        </View>
 
-      {/* 필수 */}
-      {essentialItems.length > 0 && (
-        <>
-          <Text style={[styles.sectionLabel, { marginTop: 16 }]}>필수 지출</Text>
-          {groupByApp(essentialItems).map(([app, min]) => (
-            <Row key={app} label={app} value={fmt(min)} indent muted />
-          ))}
-        </>
-      )}
+        <TouchableOpacity style={styles.shareBtn} activeOpacity={0.8}>
+          <Ionicons name="share-outline" size={20} color="white" style={{ marginRight: 8 }} />
+          <Text style={styles.shareBtnText}>이 주간 보고서 공유하기</Text>
+        </TouchableOpacity>
 
-      <View style={styles.thickDivider} />
-
-      {/* 순이익/손실 */}
-      <View style={[styles.verdictBox, isProfit ? styles.verdictProfit : styles.verdictLoss]}>
-        <Text style={[styles.verdictLabel, { color: isProfit ? 'rgba(74,222,128,0.7)' : 'rgba(248,113,133,0.7)' }]}>
-          {isProfit ? '주간 순이익' : '주간 순손실'}
-        </Text>
-        <Text style={[styles.verdictValue, { color: isProfit ? colors.profit : colors.loss }]}>
-          {isProfit ? '＋' : '－'} {fmt(Math.abs(netMinutes))}
-        </Text>
-        <Text style={styles.verdictSub}>{week}</Text>
-      </View>
-
-      <View style={{ height: 40 }} />
-    </ScrollView>
-  );
-}
-
-function Row({ label, value, indent, bold, loss, profit, muted }: {
-  label: string | React.ReactNode; value: string;
-  indent?: boolean; bold?: boolean;
-  loss?: boolean; profit?: boolean; muted?: boolean;
-}) {
-  return (
-    <View style={[styles.row, indent && styles.rowIndent]}>
-      <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}>
-        {typeof label === 'string'
-          ? <Text style={[styles.rowLabel, bold && styles.boldText]}>{label}</Text>
-          : label}
-      </View>
-      <Text style={[
-        styles.rowValue,
-        bold && styles.boldText,
-        loss && styles.lossText,
-        profit && styles.profitText,
-        muted && styles.mutedText,
-      ]}>{value}</Text>
+      </ScrollView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.bgBase, paddingHorizontal: spacing.lg },
-  header: { paddingTop: 60, paddingBottom: spacing.lg },
-  backBtn: { marginBottom: spacing.md },
-  backText: { fontFamily: font.regular, fontSize: fontSize.sm, color: colors.accent },
-  headerSub: { fontFamily: font.regular, fontSize: fontSize.xs, color: colors.textMuted, letterSpacing: 1, marginBottom: 6 },
-  headerTitle: { fontFamily: font.medium, fontSize: fontSize.xl, color: colors.textPrimary, letterSpacing: -0.5 },
-  thickDivider: { height: 1.5, backgroundColor: colors.border, marginVertical: spacing.sm },
-  thinDivider: { height: 0.5, backgroundColor: colors.borderSub, marginVertical: spacing.sm },
-  sectionLabel: { fontFamily: font.regular, fontSize: fontSize.xs, color: colors.textMuted, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: spacing.sm },
-  row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: 6 },
-  rowIndent: { paddingLeft: spacing.md },
-  rowLabel: { fontFamily: font.regular, fontSize: 13, color: colors.textSecondary },
-  rowValue: { fontFamily: font.regular, fontSize: 13, color: colors.textPrimary },
-  boldText: { fontFamily: font.medium, fontSize: fontSize.md, color: colors.textPrimary },
-  lossText: { color: colors.loss },
-  profitText: { color: colors.profit },
-  mutedText: { color: colors.textMuted },
-  emptyRow: { fontFamily: font.regular, fontSize: fontSize.sm, color: colors.textDisabled, paddingLeft: spacing.md, paddingVertical: 6 },
-  verdictBox: { borderRadius: radius.md, padding: spacing.md, alignItems: 'center', borderWidth: 1 },
-  verdictLoss: { backgroundColor: colors.lossBg, borderColor: colors.lossBorder },
-  verdictProfit: { backgroundColor: colors.profitBg, borderColor: colors.profitBorder },
-  verdictLabel: { fontFamily: font.regular, fontSize: fontSize.xs, letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: spacing.sm },
-  verdictValue: { fontFamily: font.medium, fontSize: fontSize['2xl'], letterSpacing: -0.5, marginBottom: 6 },
-  verdictSub: { fontFamily: font.regular, fontSize: fontSize.xs, color: colors.textMuted },
+  root: { flex: 1, backgroundColor: colors.bgBase },
+  container: { flex: 1, paddingHorizontal: 24 },
+  glow: { position: 'absolute', top: -100, left: 0, right: 0, height: 400 },
+  navBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: 60, paddingHorizontal: 16, marginBottom: 20 },
+  backBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
+  navTitle: { fontFamily: font.bold, fontSize: 16, color: colors.textPrimary },
+
+  reportHeader: { alignItems: 'center', marginBottom: 24 },
+  reportPeriod: { fontFamily: font.medium, fontSize: 11, color: colors.textMuted, letterSpacing: 2, textTransform: 'uppercase', marginBottom: 12 },
+  personaTag: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 12, borderWidth: 1 },
+  personaText: { fontFamily: font.bold, fontSize: 12 },
+
+  statementCard: { backgroundColor: 'rgba(23,23,23,0.4)', borderRadius: 32, padding: 32, alignItems: 'center', marginBottom: 24, borderWidth: 1, borderColor: colors.borderSub, ...shadows.medium },
+  statementMsg: { fontFamily: font.regular, fontSize: 14, color: colors.textSecondary, textAlign: 'center', lineHeight: 22, marginBottom: 20 },
+  netProfitVal: { fontFamily: font.bold, fontSize: 48, letterSpacing: -2 },
+  netProfitLabel: { fontFamily: font.medium, fontSize: 9, color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 2, marginTop: 12 },
+  personaDesc: { fontFamily: font.regular, fontSize: 12, color: colors.textMuted, textAlign: 'center', marginTop: 24, lineHeight: 18, paddingHorizontal: 10 },
+
+  indicatorGrid: { flexDirection: 'row', gap: 12, marginBottom: 32 },
+  indicatorCard: { flex: 1, backgroundColor: colors.bgSurface, borderRadius: 20, padding: 16, borderWidth: 1, borderColor: colors.border, ...shadows.soft },
+  indLabel: { fontFamily: font.medium, fontSize: 10, color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 },
+  indValue: { fontFamily: font.bold, fontSize: 15, color: colors.textPrimary, marginBottom: 4 },
+  indStatus: { fontFamily: font.bold, fontSize: 10 },
+
+  section: { marginBottom: 32 },
+  sectionHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 16 },
+  sectionLabel: { fontFamily: font.medium, fontSize: 10, color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 2, marginRight: 12 },
+  sectionLine: { flex: 1, height: 1, backgroundColor: colors.borderSub },
+  assetList: { backgroundColor: colors.bgSurface, borderRadius: 24, padding: 8, borderWidth: 1, borderColor: colors.border },
+  assetItem: { flexDirection: 'row', alignItems: 'center', padding: 14, borderBottomWidth: 1, borderBottomColor: colors.borderSub },
+  assetRank: { fontFamily: font.bold, fontSize: 11, color: colors.textDisabled, marginRight: 16 },
+  assetName: { flex: 1, fontFamily: font.medium, fontSize: 13, color: colors.textSecondary },
+  assetTime: { fontFamily: font.bold, fontSize: 13, color: colors.textPrimary },
+  emptyText: { fontFamily: font.regular, fontSize: 13, color: colors.textDisabled, textAlign: 'center', padding: 24 },
+
+  shareBtn: { backgroundColor: colors.accent, borderRadius: 16, paddingVertical: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', ...shadows.medium },
+  shareBtnText: { fontFamily: font.bold, fontSize: 15, color: 'white', letterSpacing: 0.5 },
 });
