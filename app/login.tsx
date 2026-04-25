@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import { GoogleSignin, statusCodes } from '@react-native-google-signin/google-signin';
 import { supabase } from '../src/lib/supabase';
+import { colors, font, fontSize, spacing, radius } from '../src/lib/theme';
 
 GoogleSignin.configure({
   iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
@@ -51,37 +52,37 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0f0f0f',
+    backgroundColor: colors.bgBase,
   },
   inner: {
     flex: 1,
     justifyContent: 'center',
-    paddingHorizontal: 28,
+    paddingHorizontal: spacing.lg,
   },
   logo: {
-    fontFamily: 'GeistMono_500Medium',
+    fontFamily: font.medium,
     fontSize: 48,
-    color: '#f0ede8',
+    color: colors.textPrimary,
     letterSpacing: -1,
     marginBottom: 6,
   },
   tagline: {
-    fontFamily: 'GeistMono_400Regular',
+    fontFamily: font.regular,
     fontSize: 13,
-    color: '#5a5754',
-    marginBottom: 52,
+    color: colors.textMuted,
+    marginBottom: spacing['2xl'],
   },
   googleBtn: {
-    backgroundColor: '#161614',
+    backgroundColor: colors.bgSurface,
     borderWidth: 1,
-    borderColor: '#2a2826',
-    borderRadius: 10,
-    padding: 16,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    padding: spacing.md,
     alignItems: 'center',
   },
   googleBtnText: {
-    fontFamily: 'GeistMono_500Medium',
-    fontSize: 14,
-    color: '#f0ede8',
+    fontFamily: font.medium,
+    fontSize: fontSize.md,
+    color: colors.textPrimary,
   },
 });

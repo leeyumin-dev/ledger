@@ -10,21 +10,22 @@ import { supabase } from '../../src/lib/supabase';
 import { AppHeader } from '../../src/components/AppHeader';
 import { isTokenKey, getMonitoringStatus } from '../../src/lib/screenTime';
 import { checkAndAwardBadges, getEarnedBadges, Badge } from '../../src/lib/badges';
+import { colors, font, fontSize, spacing, radius } from '../../src/lib/theme';
 
 const CALENDAR_THEME = {
-  backgroundColor: '#0f0f0f',
-  calendarBackground: '#0f0f0f',
-  textSectionTitleColor: '#5a5754',
-  selectedDayBackgroundColor: '#e8410a',
+  backgroundColor: colors.bgBase,
+  calendarBackground: colors.bgBase,
+  textSectionTitleColor: colors.textMuted,
+  selectedDayBackgroundColor: colors.accent,
   selectedDayTextColor: '#ffffff',
-  todayTextColor: '#e8410a',
-  dayTextColor: '#f0ede8',
-  textDisabledColor: '#3a3836',
-  monthTextColor: '#f0ede8',
-  arrowColor: '#e8410a',
-  textMonthFontFamily: 'GeistMono_500Medium',
-  textDayFontFamily: 'GeistMono_400Regular',
-  textDayHeaderFontFamily: 'GeistMono_400Regular',
+  todayTextColor: colors.accent,
+  dayTextColor: colors.textPrimary,
+  textDisabledColor: colors.textDisabled,
+  monthTextColor: colors.textPrimary,
+  arrowColor: colors.accent,
+  textMonthFontFamily: font.medium,
+  textDayFontFamily: font.regular,
+  textDayHeaderFontFamily: font.regular,
   textDayFontSize: 13,
   textMonthFontSize: 16,
   textDayHeaderFontSize: 11,
@@ -148,7 +149,7 @@ export default function ArchiveScreen() {
               borderRadius: 8,
             },
             text: {
-              color: isProfit ? '#4ade80' : '#f87171',
+              color: isProfit ? colors.profit : colors.loss,
               fontWeight: '600',
             },
           },
@@ -175,7 +176,7 @@ export default function ArchiveScreen() {
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: '#0f0f0f' }}>
+    <View style={{ flex: 1, backgroundColor: colors.bgBase }}>
       <AppHeader />
       <ScrollView style={styles.container}>
 
@@ -226,7 +227,7 @@ export default function ArchiveScreen() {
             <View style={styles.legend}>
               <View style={[styles.legendDot, { backgroundColor: '#e11d48' }]} />
               <Text style={styles.legendText}>낭비</Text>
-              <View style={[styles.legendDot, { backgroundColor: '#2a2826', marginLeft: 12 }]} />
+              <View style={[styles.legendDot, { backgroundColor: colors.border, marginLeft: 12 }]} />
               <Text style={styles.legendText}>기록없음</Text>
               <View style={[styles.legendDot, { backgroundColor: '#16a34a', marginLeft: 12 }]} />
               <Text style={styles.legendText}>흑자</Text>
@@ -316,25 +317,25 @@ export default function ArchiveScreen() {
                 date.startsWith(currentMonth)
               );
               const profitDays = monthDates.filter(([, v]) =>
-                v.customStyles.text.color === '#4ade80'
+                v.customStyles.text.color === colors.profit
               ).length;
               const lossDays = monthDates.filter(([, v]) =>
-                v.customStyles.text.color === '#f87171'
+                v.customStyles.text.color === colors.loss
               ).length;
 
               return (
                 <View style={styles.summaryRow}>
                   <View style={styles.summaryCard}>
                     <Text style={styles.summaryLabel}>흑자일</Text>
-                    <Text style={[styles.summaryValue, { color: '#4ade80' }]}>{profitDays}일</Text>
+                    <Text style={[styles.summaryValue, { color: colors.profit }]}>{profitDays}일</Text>
                   </View>
                   <View style={styles.summaryCard}>
                     <Text style={styles.summaryLabel}>낭비일</Text>
-                    <Text style={[styles.summaryValue, { color: '#f87171' }]}>{lossDays}일</Text>
+                    <Text style={[styles.summaryValue, { color: colors.loss }]}>{lossDays}일</Text>
                   </View>
                   <View style={styles.summaryCard}>
                     <Text style={styles.summaryLabel}>기록일</Text>
-                    <Text style={[styles.summaryValue, { color: '#f0ede8' }]}>{monthDates.length}일</Text>
+                    <Text style={[styles.summaryValue, { color: colors.textPrimary }]}>{monthDates.length}일</Text>
                   </View>
                 </View>
               );
@@ -350,62 +351,62 @@ export default function ArchiveScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#0f0f0f', paddingHorizontal: 24 },
-  header: { paddingTop: 16, paddingBottom: 24 },
-  tabRow: { flexDirection: 'row', gap: 8, marginBottom: 20 },
-  tabBtn: { paddingHorizontal: 20, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: '#2a2826' },
-  tabBtnActive: { backgroundColor: '#e8410a', borderColor: '#e8410a' },
-  tabBtnText: { fontFamily: 'GeistMono_400Regular', fontSize: 12, color: '#5a5754' },
+  container: { flex: 1, backgroundColor: colors.bgBase, paddingHorizontal: spacing.lg },
+  header: { paddingTop: spacing.md, paddingBottom: spacing.lg },
+  tabRow: { flexDirection: 'row', gap: spacing.sm, marginBottom: 20 },
+  tabBtn: { paddingHorizontal: 20, paddingVertical: spacing.sm, borderRadius: 20, borderWidth: 1, borderColor: colors.border },
+  tabBtnActive: { backgroundColor: colors.accent, borderColor: colors.accent },
+  tabBtnText: { fontFamily: font.regular, fontSize: fontSize.sm, color: colors.textMuted },
   tabBtnTextActive: { color: '#ffffff' },
-  heatmapBox: { backgroundColor: '#161614', borderRadius: 12, padding: 16, marginBottom: 24 },
-  heatmapLabel: { fontFamily: 'GeistMono_400Regular', fontSize: 10, color: '#5a5754', letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 12 },
+  heatmapBox: { backgroundColor: colors.bgSurface, borderRadius: radius.md, padding: spacing.md, marginBottom: spacing.lg },
+  heatmapLabel: { fontFamily: font.regular, fontSize: fontSize.xs, color: colors.textMuted, letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: spacing.sm },
   heatmapGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 4 },
   heatmapCell: { width: 18, height: 18, borderRadius: 3 },
   cellProfit: { backgroundColor: '#16a34a' },
   cellLoss: { backgroundColor: '#e11d48' },
-  cellEmpty: { backgroundColor: '#2a2826' },
+  cellEmpty: { backgroundColor: colors.border },
   legend: { flexDirection: 'row', alignItems: 'center', marginTop: 10 },
   legendDot: { width: 10, height: 10, borderRadius: 2 },
-  legendText: { fontFamily: 'GeistMono_400Regular', fontSize: 10, color: '#5a5754', marginLeft: 4 },
-  divider: { height: 0.5, backgroundColor: '#2a2826', marginBottom: 8 },
+  legendText: { fontFamily: font.regular, fontSize: fontSize.xs, color: colors.textMuted, marginLeft: 4 },
+  divider: { height: 0.5, backgroundColor: colors.border, marginBottom: spacing.sm },
   emptyBox: { paddingVertical: 48, alignItems: 'center' },
-  emptyText: { fontFamily: 'GeistMono_500Medium', fontSize: 14, color: '#5a5754', marginBottom: 8 },
-  emptySub: { fontFamily: 'GeistMono_400Regular', fontSize: 12, color: '#3a3836', textAlign: 'center' },
-  item: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 14, borderBottomWidth: 0.5, borderBottomColor: '#1c1c1a' },
-  itemPeriod: { fontFamily: 'GeistMono_500Medium', fontSize: 13, color: '#f0ede8', marginBottom: 3 },
-  itemDetail: { fontFamily: 'GeistMono_400Regular', fontSize: 10, color: '#5a5754' },
-  itemValue: { fontFamily: 'GeistMono_500Medium', fontSize: 13 },
-  profitText: { color: '#4ade80' },
-  lossText: { color: '#f87171' },
-  monthlySummary: { marginTop: 8 },
-  sectionLabel: { fontFamily: 'GeistMono_400Regular', fontSize: 10, color: '#5a5754', letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 12 },
+  emptyText: { fontFamily: font.medium, fontSize: fontSize.md, color: colors.textMuted, marginBottom: spacing.sm },
+  emptySub: { fontFamily: font.regular, fontSize: fontSize.sm, color: colors.textDisabled, textAlign: 'center' },
+  item: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 14, borderBottomWidth: 0.5, borderBottomColor: colors.bgRaised },
+  itemPeriod: { fontFamily: font.medium, fontSize: 13, color: colors.textPrimary, marginBottom: 3 },
+  itemDetail: { fontFamily: font.regular, fontSize: fontSize.xs, color: colors.textMuted },
+  itemValue: { fontFamily: font.medium, fontSize: 13 },
+  profitText: { color: colors.profit },
+  lossText: { color: colors.loss },
+  monthlySummary: { marginTop: spacing.sm },
+  sectionLabel: { fontFamily: font.regular, fontSize: fontSize.xs, color: colors.textMuted, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: spacing.sm },
   summaryRow: { flexDirection: 'row', gap: 10 },
-  summaryCard: { flex: 1, backgroundColor: '#161614', borderRadius: 10, padding: 14, alignItems: 'center' },
-  summaryLabel: { fontFamily: 'GeistMono_400Regular', fontSize: 10, color: '#5a5754', marginBottom: 6 },
-  summaryValue: { fontFamily: 'GeistMono_500Medium', fontSize: 22 },
+  summaryCard: { flex: 1, backgroundColor: colors.bgSurface, borderRadius: radius.md, padding: 14, alignItems: 'center' },
+  summaryLabel: { fontFamily: font.regular, fontSize: fontSize.xs, color: colors.textMuted, marginBottom: 6 },
+  summaryValue: { fontFamily: font.medium, fontSize: fontSize.xl },
   headerRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-end',
-    paddingTop: 16,
-    paddingBottom: 24,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.lg,
   },
   headerSub: {
-    fontFamily: 'GeistMono_400Regular',
-    fontSize: 11,
-    color: '#5a5754',
+    fontFamily: font.regular,
+    fontSize: fontSize.xs,
+    color: colors.textMuted,
     letterSpacing: 1,
     marginBottom: 6,
   },
   headerTitle: {
-    fontFamily: 'GeistMono_500Medium',
-    fontSize: 28,
-    color: '#f0ede8',
+    fontFamily: font.medium,
+    fontSize: fontSize.xl,
+    color: colors.textPrimary,
     letterSpacing: -0.5,
   },
   toggleWrap: {
     flexDirection: 'row',
-    backgroundColor: '#1c1c1a',
+    backgroundColor: colors.bgRaised,
     borderRadius: 20,
     padding: 3,
     gap: 2,
@@ -416,64 +417,64 @@ const styles = StyleSheet.create({
     borderRadius: 16,
   },
   toggleBtnActive: {
-    backgroundColor: '#e8410a',
+    backgroundColor: colors.accent,
   },
   toggleBtnText: {
-    fontFamily: 'GeistMono_400Regular',
-    fontSize: 11,
-    color: '#5a5754',
+    fontFamily: font.regular,
+    fontSize: fontSize.xs,
+    color: colors.textMuted,
   },
   toggleBtnTextActive: {
     color: '#ffffff',
   },
   reportBtn: {
-    backgroundColor: '#161614',
+    backgroundColor: colors.bgSurface,
     borderWidth: 1,
-    borderColor: '#2a2826',
-    borderRadius: 10,
-    padding: 16,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    padding: spacing.md,
     alignItems: 'center',
-    marginTop: 8,
+    marginTop: spacing.sm,
   },
   reportBtnText: {
-    fontFamily: 'GeistMono_400Regular',
+    fontFamily: font.regular,
     fontSize: 13,
-    color: '#f0ede8',
+    color: colors.textPrimary,
   },
   badgesSection: {
     marginBottom: 20,
   },
   badgesSectionLabel: {
-    fontFamily: 'GeistMono_400Regular',
-    fontSize: 10,
-    color: '#5a5754',
+    fontFamily: font.regular,
+    fontSize: fontSize.xs,
+    color: colors.textMuted,
     letterSpacing: 1.5,
     textTransform: 'uppercase',
-    marginBottom: 12,
+    marginBottom: spacing.sm,
   },
   badgeCard: {
-    backgroundColor: '#161614',
-    borderRadius: 12,
+    backgroundColor: colors.bgSurface,
+    borderRadius: radius.md,
     padding: 14,
     marginRight: 10,
     width: 120,
     borderWidth: 1,
-    borderColor: '#2a2826',
+    borderColor: colors.border,
   },
   badgeIcon: {
     fontSize: 24,
-    marginBottom: 8,
+    marginBottom: spacing.sm,
   },
   badgeTitle: {
-    fontFamily: 'GeistMono_500Medium',
-    fontSize: 12,
-    color: '#f0ede8',
+    fontFamily: font.medium,
+    fontSize: fontSize.sm,
+    color: colors.textPrimary,
     marginBottom: 4,
   },
   badgeDesc: {
-    fontFamily: 'GeistMono_400Regular',
-    fontSize: 10,
-    color: '#5a5754',
+    fontFamily: font.regular,
+    fontSize: fontSize.xs,
+    color: colors.textMuted,
     lineHeight: 14,
   },
 });

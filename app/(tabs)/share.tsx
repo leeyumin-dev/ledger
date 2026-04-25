@@ -11,6 +11,7 @@ import { supabase } from '../../src/lib/supabase';
 import { AppHeader } from '../../src/components/AppHeader';
 import { AppTokenLabel } from '../../src/components/AppTokenLabel';
 import { isTokenKey, getMonitoringStatus } from '../../src/lib/screenTime';
+import { colors, font, fontSize, spacing, radius } from '../../src/lib/theme';
 
 type UsageItem = {
   app_name: string;
@@ -216,7 +217,7 @@ export default function ShareScreen() {
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: '#0f0f0f' }}>
+    <View style={{ flex: 1, backgroundColor: colors.bgBase }}>
       <AppHeader />
       <ScrollView style={styles.container}>
 
@@ -235,7 +236,7 @@ export default function ShareScreen() {
           ))}
         </View>
         {/* ViewShot */}
-        <ViewShot ref={cardRef} options={{ format: 'png', quality: 1.0 }} style={{ backgroundColor: '#0f0f0f', paddingHorizontal: 24, paddingVertical: 28 }}>
+        <ViewShot ref={cardRef} options={{ format: 'png', quality: 1.0 }} style={{ backgroundColor: colors.bgBase, paddingHorizontal: spacing.lg, paddingVertical: 28 }}>
 
           {/* ── 주간 ── */}
           {tab === 'weekly' && (
@@ -246,7 +247,7 @@ export default function ShareScreen() {
               </Text>
               <Text style={styles.weekHero}>
                 이번 주 당신의 시간 잔고는{'\n'}
-                <Text style={{ color: weekIsProfit ? '#39FF14' : '#FF3131', fontFamily: 'GeistMono_500Medium' }}>
+                <Text style={{ color: weekIsProfit ? colors.profit : colors.loss, fontFamily: font.medium }}>
                   '{weekIsProfit ? '흑자' : '적자'}'
                 </Text>
                 입니다
@@ -254,21 +255,21 @@ export default function ShareScreen() {
 
               <View style={styles.section}>
                 <View style={styles.secHeader}>
-                  <View style={[styles.secDot, { backgroundColor: '#FF3131' }]} />
+                  <View style={[styles.secDot, { backgroundColor: colors.loss }]} />
                   <Text style={styles.secLabel}>시간 손실 항목</Text>
                 </View>
                 {groupByApp(weekData, '소비').map(([app, min]) => (
                   <View key={app} style={styles.row}>
                     {isTokenKey(app)
-                      ? <AppTokenLabel tokenKey={app} color="#f0ede8" fontSize={12} style={{ flex: 1, height: 26 }} />
+                      ? <AppTokenLabel tokenKey={app} color={colors.textPrimary} fontSize={12} style={{ flex: 1, height: 26 }} />
                       : <Text style={styles.rowName}>{app}</Text>}
-                    <Text style={[styles.rowVal, { color: '#FF3131' }]}>－ {fmt(min)}</Text>
+                    <Text style={[styles.rowVal, { color: colors.loss }]}>－ {fmt(min)}</Text>
                   </View>
                 ))}
                 {groupByApp(weekData, '소비').length === 0 && <Text style={styles.emptyTxt}>손실 없음</Text>}
                 <View style={styles.subRow}>
                   <Text style={styles.subLabel}>합계</Text>
-                  <Text style={[styles.subVal, { color: '#FF3131' }]}>－ {fmt(weekStats.loss)}</Text>
+                  <Text style={[styles.subVal, { color: colors.loss }]}>－ {fmt(weekStats.loss)}</Text>
                 </View>
               </View>
 
@@ -276,21 +277,21 @@ export default function ShareScreen() {
 
               <View style={styles.section}>
                 <View style={styles.secHeader}>
-                  <View style={[styles.secDot, { backgroundColor: '#39FF14' }]} />
+                  <View style={[styles.secDot, { backgroundColor: colors.profit }]} />
                   <Text style={styles.secLabel}>투자 수익</Text>
                 </View>
                 {groupByApp(weekData, '투자').map(([app, min]) => (
                   <View key={app} style={styles.row}>
                     {isTokenKey(app)
-                      ? <AppTokenLabel tokenKey={app} color="#f0ede8" fontSize={12} style={{ flex: 1, height: 26 }} />
+                      ? <AppTokenLabel tokenKey={app} color={colors.textPrimary} fontSize={12} style={{ flex: 1, height: 26 }} />
                       : <Text style={styles.rowName}>{app}</Text>}
-                    <Text style={[styles.rowVal, { color: '#39FF14' }]}>＋ {fmt(min)}</Text>
+                    <Text style={[styles.rowVal, { color: colors.profit }]}>＋ {fmt(min)}</Text>
                   </View>
                 ))}
                 {groupByApp(weekData, '투자').length === 0 && <Text style={styles.emptyTxt}>투자 없음</Text>}
                 <View style={styles.subRow}>
                   <Text style={styles.subLabel}>합계</Text>
-                  <Text style={[styles.subVal, { color: '#39FF14' }]}>＋ {fmt(weekStats.invest)}</Text>
+                  <Text style={[styles.subVal, { color: colors.profit }]}>＋ {fmt(weekStats.invest)}</Text>
                 </View>
               </View>
 
@@ -299,15 +300,15 @@ export default function ShareScreen() {
               <View style={styles.bepRow}>
                 <View>
                   <Text style={styles.bepLabel}>도파민 손익분기점</Text>
-                  <Text style={[styles.bepStatus, { color: weekIsProfit ? 'rgba(57,255,20,0.6)' : 'rgba(255,49,49,0.6)' }]}>
+                  <Text style={[styles.bepStatus, { color: weekIsProfit ? `${colors.profit}99` : `${colors.loss}99` }]}>
                     {weekIsProfit ? '흑자 주간 달성' : '적자 주간'}
                   </Text>
                 </View>
                 <View style={[styles.bepBox, {
-                  backgroundColor: weekIsProfit ? 'rgba(57,255,20,0.1)' : 'rgba(255,49,49,0.1)',
-                  borderColor: weekIsProfit ? 'rgba(57,255,20,0.3)' : 'rgba(255,49,49,0.3)',
+                  backgroundColor: weekIsProfit ? colors.profitBg : colors.lossBg,
+                  borderColor: weekIsProfit ? colors.profitBorder : colors.lossBorder,
                 }]}>
-                  <Text style={[styles.bepVal, { color: weekIsProfit ? '#39FF14' : '#FF3131' }]}>
+                  <Text style={[styles.bepVal, { color: weekIsProfit ? colors.profit : colors.loss }]}>
                     {weekIsProfit ? '＋' : '－'} {fmt(Math.abs(weekStats.net))}
                   </Text>
                 </View>
@@ -405,18 +406,18 @@ export default function ShareScreen() {
                     <Text style={styles.prevArrow}>→</Text>
                     <View style={{ flex: 1, alignItems: 'flex-end' }}>
                       <Text style={styles.prevRateLabel}>이번달 방어율</Text>
-                      <Text style={[styles.prevRateVal, { color: improvement >= 0 ? '#39FF14' : '#FF3131' }]}>{defenseRate}%</Text>
+                      <Text style={[styles.prevRateVal, { color: improvement >= 0 ? colors.profit : colors.loss }]}>{defenseRate}%</Text>
                     </View>
                   </View>
                   <View style={[styles.prevImprovBox, {
-                    backgroundColor: improvement >= 0 ? 'rgba(57,255,20,0.08)' : 'rgba(255,49,49,0.08)',
-                    borderColor: improvement >= 0 ? 'rgba(57,255,20,0.15)' : 'rgba(255,49,49,0.15)',
+                    backgroundColor: improvement >= 0 ? colors.profitBg : colors.lossBg,
+                    borderColor: improvement >= 0 ? colors.profitBorder : colors.lossBorder,
                   }]}>
-                    <Text style={[styles.prevImprovPct, { color: improvement >= 0 ? '#39FF14' : '#FF3131' }]}>
+                    <Text style={[styles.prevImprovPct, { color: improvement >= 0 ? colors.profit : colors.loss }]}>
                       {improvement >= 0 ? '+' : ''}{Math.round(Math.abs(improvement) / Math.max(Math.abs(prevMonthNet || 1), 1) * 100)}%
                     </Text>
                     <View style={{ flex: 1 }}>
-                      <Text style={[styles.prevImprovTitle, { color: improvement >= 0 ? '#39FF14' : '#FF3131' }]}>
+                      <Text style={[styles.prevImprovTitle, { color: improvement >= 0 ? colors.profit : colors.loss }]}>
                         {improvement >= 0 ? '전월 대비 생산성 증가' : '전월 대비 생산성 감소'}
                       </Text>
                       <Text style={styles.prevImprovMsg}>
@@ -428,7 +429,7 @@ export default function ShareScreen() {
               )}
 
               {/* 요약 카드 */}
-              <View style={[styles.summaryCard, { backgroundColor: monthIsProfit ? '#39FF14' : '#FF3131' }]}>
+              <View style={[styles.summaryCard, { backgroundColor: monthIsProfit ? colors.profit : colors.loss }]}>
                 <View style={styles.summaryInner}>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.summaryDefense}>방어율 {defenseRate}% 달성!</Text>
@@ -458,7 +459,7 @@ export default function ShareScreen() {
               {/* 빅 넘버 */}
               <View style={{ marginBottom: 20 }}>
                 <Text style={styles.yearBigLabel}>Annual Net Investment</Text>
-                <Text style={[styles.yearBigNum, { color: yearIsProfit ? '#39FF14' : '#FF3131' }]}>
+                <Text style={[styles.yearBigNum, { color: yearIsProfit ? colors.profit : colors.loss }]}>
                   {yearIsProfit ? '+' : '-'}{fmt(Math.abs(yearStats.net))}
                 </Text>
                 <View style={styles.analogyBox}>
@@ -473,7 +474,7 @@ export default function ShareScreen() {
                   <Text style={styles.yearGridVal}>{Math.round((yearDays.recorded / 365) * 100)}%</Text>
                   <Text style={styles.yearGridSub}>365일 중 {yearDays.recorded}일 기록</Text>
                   <View style={styles.barBg}>
-                    <View style={[styles.barFill, { width: `${Math.round((yearDays.recorded / 365) * 100)}%` as any, backgroundColor: '#39FF14' }]} />
+                    <View style={[styles.barFill, { width: `${Math.round((yearDays.recorded / 365) * 100)}%` as any, backgroundColor: colors.profit }]} />
                   </View>
                 </View>
                 <View style={styles.yearGridCard}>
@@ -483,7 +484,7 @@ export default function ShareScreen() {
                   </Text>
                   <Text style={styles.yearGridSub}>{top3YearInvest[0] ? fmt(top3YearInvest[0][1]) : '0h'}</Text>
                   <View style={styles.barBg}>
-                    <View style={[styles.barFill, { width: '85%' as any, backgroundColor: '#39FF14' }]} />
+                    <View style={[styles.barFill, { width: '85%' as any, backgroundColor: colors.profit }]} />
                   </View>
                 </View>
               </View>
@@ -491,9 +492,9 @@ export default function ShareScreen() {
               {/* 3대 지표 */}
               <View style={styles.yearMetrics}>
                 {[
-                  { label: '기록일', val: yearDays.recorded, color: '#fff' },
-                  { label: '흑자일', val: yearDays.profit, color: '#39FF14' },
-                  { label: '낭비일', val: yearDays.loss, color: '#FF3131' },
+                  { label: '기록일', val: yearDays.recorded, color: colors.textPrimary },
+                  { label: '흑자일', val: yearDays.profit, color: colors.profit },
+                  { label: '낭비일', val: yearDays.loss, color: colors.loss },
                 ].map((m, i) => (
                   <View key={m.label} style={[
                     styles.yearMetricItem,
@@ -523,7 +524,7 @@ export default function ShareScreen() {
               <View style={styles.rankBox}>
                 <Text style={styles.rankText}>
                   귀하의 시간 관리 능력은{'\n'}Ledger 유저 중{' '}
-                  <Text style={{ color: '#FF5722', fontFamily: 'GeistMono_500Medium', fontSize: 16 }}>
+                  <Text style={{ color: colors.accent, fontFamily: font.medium, fontSize: 16 }}>
                     상위 5%
                   </Text>
                   {'\n'}입니다.
@@ -553,104 +554,104 @@ export default function ShareScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#0f0f0f' },
-  tabRow: { flexDirection: 'row', justifyContent: 'center', gap: 8, paddingVertical: 16, paddingHorizontal: 20 },
-  toggleBtn: { flex: 1, paddingVertical: 8, borderRadius: 8, alignItems: 'center', backgroundColor: '#1c1c1a' },
-  toggleBtnActive: { backgroundColor: '#e8410a' },
-  toggleBtnText: { fontFamily: 'GeistMono_400Regular', fontSize: 12, color: '#5a5754' },
+  container: { flex: 1, backgroundColor: colors.bgBase },
+  tabRow: { flexDirection: 'row', justifyContent: 'center', gap: spacing.sm, paddingVertical: spacing.md, paddingHorizontal: spacing.md },
+  toggleBtn: { flex: 1, paddingVertical: spacing.sm, borderRadius: radius.sm, alignItems: 'center', backgroundColor: colors.bgRaised },
+  toggleBtnActive: { backgroundColor: colors.accent },
+  toggleBtnText: { fontFamily: font.regular, fontSize: fontSize.sm, color: colors.textMuted },
   toggleBtnTextActive: { color: '#ffffff' },
 
-  reportWrap: { paddingBottom: 16 },
+  reportWrap: { paddingBottom: spacing.md },
 
   // 주간
-  weekTitle: { fontFamily: 'GeistMono_500Medium', fontSize: 22, color: '#fff', textAlign: 'center', marginBottom: 16 },
-  weekHero: { fontFamily: 'GeistMono_400Regular', fontSize: 17, color: '#f0ede8', textAlign: 'center', lineHeight: 28, marginBottom: 24 },
+  weekTitle: { fontFamily: font.medium, fontSize: fontSize.xl, color: colors.textPrimary, textAlign: 'center', marginBottom: spacing.md },
+  weekHero: { fontFamily: font.regular, fontSize: fontSize.lg, color: colors.textPrimary, textAlign: 'center', lineHeight: 28, marginBottom: spacing.lg },
   section: { paddingVertical: 14 },
-  secHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
+  secHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.sm },
   secDot: { width: 8, height: 8, borderRadius: 4 },
-  secLabel: { fontFamily: 'GeistMono_500Medium', fontSize: 11, color: 'rgba(255,255,255,0.5)', letterSpacing: 1.5, textTransform: 'uppercase' },
+  secLabel: { fontFamily: font.medium, fontSize: fontSize.xs, color: colors.textMuted, letterSpacing: 1.5, textTransform: 'uppercase' },
   row: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 7 },
-  rowName: { fontFamily: 'GeistMono_400Regular', fontSize: 15, color: 'rgba(255,255,255,0.7)' },
-  rowVal: { fontFamily: 'GeistMono_500Medium', fontSize: 15 },
-  emptyTxt: { fontFamily: 'GeistMono_400Regular', fontSize: 12, color: 'rgba(255,255,255,0.2)', paddingVertical: 4 },
-  subRow: { flexDirection: 'row', justifyContent: 'space-between', paddingTop: 10, borderTopWidth: 0.5, borderTopColor: 'rgba(255,255,255,0.08)', marginTop: 6 },
-  subLabel: { fontFamily: 'GeistMono_500Medium', fontSize: 13, color: 'rgba(255,255,255,0.4)' },
-  subVal: { fontFamily: 'GeistMono_500Medium', fontSize: 15 },
-  hr: { height: 0.5, backgroundColor: 'rgba(255,255,255,0.08)' },
+  rowName: { fontFamily: font.regular, fontSize: 15, color: colors.textSecondary },
+  rowVal: { fontFamily: font.medium, fontSize: 15 },
+  emptyTxt: { fontFamily: font.regular, fontSize: fontSize.sm, color: colors.textDisabled, paddingVertical: 4 },
+  subRow: { flexDirection: 'row', justifyContent: 'space-between', paddingTop: 10, borderTopWidth: 0.5, borderTopColor: colors.borderSub, marginTop: 6 },
+  subLabel: { fontFamily: font.medium, fontSize: 13, color: colors.textMuted },
+  subVal: { fontFamily: font.medium, fontSize: 15 },
+  hr: { height: 0.5, backgroundColor: colors.borderSub },
   bepRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 18 },
-  bepLabel: { fontFamily: 'GeistMono_500Medium', fontSize: 13, color: 'rgba(255,255,255,0.5)', marginBottom: 4 },
-  bepStatus: { fontFamily: 'GeistMono_400Regular', fontSize: 11 },
-  bepBox: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12 },
-  bepVal: { fontFamily: 'GeistMono_500Medium', fontSize: 24, letterSpacing: -1 },
-  aiBox: { paddingVertical: 16 },
-  aiTag: { fontFamily: 'GeistMono_400Regular', fontSize: 8, color: 'rgba(255,255,255,0.2)', letterSpacing: 1.5, marginBottom: 6 },
-  aiText: { fontFamily: 'GeistMono_400Regular', fontSize: 14, color: 'rgba(255,255,255,0.5)', lineHeight: 22, fontStyle: 'italic' },
-  ctaBox: { backgroundColor: '#FF5722', padding: 14, alignItems: 'center', marginBottom: 16 },
-  ctaText: { fontFamily: 'GeistMono_500Medium', fontSize: 12, color: '#fff', letterSpacing: 1 },
+  bepLabel: { fontFamily: font.medium, fontSize: 13, color: colors.textMuted, marginBottom: 4 },
+  bepStatus: { fontFamily: font.regular, fontSize: fontSize.xs },
+  bepBox: { borderWidth: 1, borderRadius: radius.md, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
+  bepVal: { fontFamily: font.medium, fontSize: fontSize['2xl'], letterSpacing: -1 },
+  aiBox: { paddingVertical: spacing.md },
+  aiTag: { fontFamily: font.regular, fontSize: fontSize.xs, color: colors.textDisabled, letterSpacing: 1.5, marginBottom: 6 },
+  aiText: { fontFamily: font.regular, fontSize: fontSize.md, color: colors.textMuted, lineHeight: 22, fontStyle: 'italic' },
+  ctaBox: { backgroundColor: colors.accent, padding: 14, alignItems: 'center', marginBottom: spacing.md },
+  ctaText: { fontFamily: font.medium, fontSize: fontSize.sm, color: '#fff', letterSpacing: 1 },
 
   // 월간
-  monthTitle: { fontFamily: 'GeistMono_500Medium', fontSize: 20, color: '#fff', textAlign: 'center', marginBottom: 2 },
-  monthSub: { fontFamily: 'GeistMono_400Regular', fontSize: 13, color: 'rgba(255,255,255,0.35)', textAlign: 'center', textDecorationLine: 'underline', textDecorationColor: '#39FF14', marginBottom: 20 },
-  donutCard: { backgroundColor: 'rgba(255,255,255,0.04)', borderRadius: 20, padding: 16, borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)', marginBottom: 16 },
-  donutLegRow: { flexDirection: 'row', gap: 10, flexWrap: 'wrap', marginBottom: 12 },
+  monthTitle: { fontFamily: font.medium, fontSize: 20, color: colors.textPrimary, textAlign: 'center', marginBottom: 2 },
+  monthSub: { fontFamily: font.regular, fontSize: 13, color: colors.textMuted, textAlign: 'center', textDecorationLine: 'underline', textDecorationColor: colors.profit, marginBottom: spacing.md },
+  donutCard: { backgroundColor: colors.bgSurface, borderRadius: radius.xl, padding: spacing.md, borderWidth: 1, borderColor: colors.border, marginBottom: spacing.md },
+  donutLegRow: { flexDirection: 'row', gap: 10, flexWrap: 'wrap', marginBottom: spacing.sm },
   legItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   legDot: { width: 8, height: 8, borderRadius: 4 },
-  legTxt: { fontFamily: 'GeistMono_400Regular', fontSize: 10, color: 'rgba(255,255,255,0.4)' },
-  donutCaption: { fontFamily: 'GeistMono_400Regular', fontSize: 9, color: 'rgba(255,255,255,0.25)', textAlign: 'center', letterSpacing: 2, textTransform: 'uppercase' },
-  mvpGrid: { flexDirection: 'row', gap: 10, marginBottom: 16 },
-  mvpCard: { flex: 1, backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 20, padding: 16, borderWidth: 1, borderColor: 'rgba(255,255,255,0.07)' },
+  legTxt: { fontFamily: font.regular, fontSize: fontSize.xs, color: colors.textMuted },
+  donutCaption: { fontFamily: font.regular, fontSize: fontSize.xs, color: colors.textDisabled, textAlign: 'center', letterSpacing: 2, textTransform: 'uppercase' },
+  mvpGrid: { flexDirection: 'row', gap: 10, marginBottom: spacing.md },
+  mvpCard: { flex: 1, backgroundColor: colors.bgSurface, borderRadius: radius.xl, padding: spacing.md, borderWidth: 1, borderColor: colors.border },
   mvpTop: { marginBottom: 10 },
-  mvpBadgeG: { fontFamily: 'GeistMono_500Medium', fontSize: 10, color: '#39FF14', backgroundColor: 'rgba(57,255,20,0.12)', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 20, alignSelf: 'flex-start' },
-  mvpBadgeR: { fontFamily: 'GeistMono_500Medium', fontSize: 10, color: '#FF3131', backgroundColor: 'rgba(255,49,49,0.12)', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 20, alignSelf: 'flex-start' },
-  mvpName: { fontFamily: 'GeistMono_500Medium', fontSize: 14, color: '#fff', marginBottom: 4 },
-  mvpTime: { fontFamily: 'GeistMono_500Medium', fontSize: 22 },
-  prevCard: { backgroundColor: 'rgba(255,87,34,0.06)', borderRadius: 16, padding: 14, marginBottom: 16, borderWidth: 1, borderColor: 'rgba(255,87,34,0.2)' },
-  prevSectionLabel: { fontFamily: 'GeistMono_400Regular', fontSize: 8, color: 'rgba(255,255,255,0.3)', letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 10 },
-  prevRateRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 },
-  prevRateLabel: { fontFamily: 'GeistMono_400Regular', fontSize: 9, color: 'rgba(255,255,255,0.3)', marginBottom: 2 },
-  prevRateValDim: { fontFamily: 'GeistMono_500Medium', fontSize: 16, color: 'rgba(255,255,255,0.5)' },
-  prevArrow: { fontFamily: 'GeistMono_400Regular', fontSize: 20, color: 'rgba(255,255,255,0.15)' },
-  prevRateVal: { fontFamily: 'GeistMono_500Medium', fontSize: 16 },
-  prevImprovBox: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderRadius: 8, padding: 8, paddingHorizontal: 12 },
-  prevImprovPct: { fontFamily: 'GeistMono_500Medium', fontSize: 16 },
-  prevImprovTitle: { fontFamily: 'GeistMono_500Medium', fontSize: 9, marginBottom: 2 },
-  prevImprovMsg: { fontFamily: 'GeistMono_400Regular', fontSize: 9, color: 'rgba(255,255,255,0.35)' },
-  summaryCard: { borderRadius: 20, padding: 18, marginBottom: 8 },
+  mvpBadgeG: { fontFamily: font.medium, fontSize: fontSize.xs, color: colors.profit, backgroundColor: colors.profitBg, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 20, alignSelf: 'flex-start' },
+  mvpBadgeR: { fontFamily: font.medium, fontSize: fontSize.xs, color: colors.loss, backgroundColor: colors.lossBg, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 20, alignSelf: 'flex-start' },
+  mvpName: { fontFamily: font.medium, fontSize: fontSize.md, color: colors.textPrimary, marginBottom: 4 },
+  mvpTime: { fontFamily: font.medium, fontSize: fontSize.xl },
+  prevCard: { backgroundColor: colors.accentBg, borderRadius: radius.lg, padding: 14, marginBottom: spacing.md, borderWidth: 1, borderColor: `${colors.accent}33` },
+  prevSectionLabel: { fontFamily: font.regular, fontSize: fontSize.xs, color: colors.textDisabled, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 10 },
+  prevRateRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: spacing.sm },
+  prevRateLabel: { fontFamily: font.regular, fontSize: fontSize.xs, color: colors.textMuted, marginBottom: 2 },
+  prevRateValDim: { fontFamily: font.medium, fontSize: 16, color: colors.textSecondary },
+  prevArrow: { fontFamily: font.regular, fontSize: 20, color: colors.textDisabled },
+  prevRateVal: { fontFamily: font.medium, fontSize: 16 },
+  prevImprovBox: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, borderWidth: 1, borderRadius: radius.sm, padding: spacing.sm, paddingHorizontal: spacing.sm },
+  prevImprovPct: { fontFamily: font.medium, fontSize: 16 },
+  prevImprovTitle: { fontFamily: font.medium, fontSize: fontSize.xs, marginBottom: 2 },
+  prevImprovMsg: { fontFamily: font.regular, fontSize: fontSize.xs, color: colors.textMuted },
+  summaryCard: { borderRadius: radius.xl, padding: 18, marginBottom: spacing.sm },
   summaryInner: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' },
-  summaryDefense: { fontFamily: 'GeistMono_500Medium', fontSize: 11, color: 'rgba(0,0,0,0.6)', marginBottom: 4 },
-  summaryMsg: { fontFamily: 'GeistMono_500Medium', fontSize: 14, color: '#000', lineHeight: 20 },
-  netLabel: { fontFamily: 'GeistMono_400Regular', fontSize: 9, color: 'rgba(0,0,0,0.6)', letterSpacing: 1, marginBottom: 2 },
-  netVal: { fontFamily: 'GeistMono_500Medium', fontSize: 22, color: '#000', fontStyle: 'italic' },
+  summaryDefense: { fontFamily: font.medium, fontSize: fontSize.xs, color: 'rgba(0,0,0,0.6)', marginBottom: 4 },
+  summaryMsg: { fontFamily: font.medium, fontSize: fontSize.md, color: '#000', lineHeight: 20 },
+  netLabel: { fontFamily: font.regular, fontSize: fontSize.xs, color: 'rgba(0,0,0,0.6)', letterSpacing: 1, marginBottom: 2 },
+  netVal: { fontFamily: font.medium, fontSize: fontSize.xl, color: '#000', fontStyle: 'italic' },
 
   // 연간
-  yearTitle: { fontFamily: 'GeistMono_500Medium', fontSize: 24, color: '#fff', textAlign: 'center', fontStyle: 'italic', marginBottom: 2 },
-  yearSub: { fontFamily: 'GeistMono_400Regular', fontSize: 9, color: 'rgba(255,255,255,0.25)', textAlign: 'center', letterSpacing: 3, textTransform: 'uppercase', marginBottom: 24 },
-  yearBigLabel: { fontFamily: 'GeistMono_400Regular', fontSize: 9, color: 'rgba(255,255,255,0.3)', letterSpacing: 2, textTransform: 'uppercase', marginBottom: 8 },
-  yearBigNum: { fontFamily: 'GeistMono_500Medium', fontSize: 56, letterSpacing: -2, lineHeight: 60, marginBottom: 16 },
-  analogyBox: { backgroundColor: 'rgba(255,255,255,0.04)', borderRadius: 12, borderLeftWidth: 4, borderLeftColor: '#39FF14', padding: 14 },
-  analogyText: { fontFamily: 'GeistMono_400Regular', fontSize: 12, color: 'rgba(255,255,255,0.5)', lineHeight: 20, fontStyle: 'italic' },
+  yearTitle: { fontFamily: font.medium, fontSize: 24, color: colors.textPrimary, textAlign: 'center', fontStyle: 'italic', marginBottom: 2 },
+  yearSub: { fontFamily: font.regular, fontSize: fontSize.xs, color: colors.textDisabled, textAlign: 'center', letterSpacing: 3, textTransform: 'uppercase', marginBottom: spacing.lg },
+  yearBigLabel: { fontFamily: font.regular, fontSize: fontSize.xs, color: colors.textMuted, letterSpacing: 2, textTransform: 'uppercase', marginBottom: spacing.sm },
+  yearBigNum: { fontFamily: font.medium, fontSize: fontSize['3xl'], letterSpacing: -2, lineHeight: 60, marginBottom: spacing.md },
+  analogyBox: { backgroundColor: colors.bgSurface, borderRadius: radius.md, borderLeftWidth: 4, borderLeftColor: colors.profit, padding: 14 },
+  analogyText: { fontFamily: font.regular, fontSize: fontSize.sm, color: colors.textMuted, lineHeight: 20, fontStyle: 'italic' },
   yearGrid: { flexDirection: 'row', gap: 10, marginBottom: 14 },
-  yearGridCard: { flex: 1, backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 16, padding: 14, borderWidth: 1, borderColor: 'rgba(255,255,255,0.07)' },
-  yearGridLabel: { fontFamily: 'GeistMono_400Regular', fontSize: 8, color: 'rgba(255,255,255,0.3)', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 6 },
-  yearGridVal: { fontFamily: 'GeistMono_500Medium', fontSize: 26, color: '#fff', marginBottom: 2 },
-  yearGridSub: { fontFamily: 'GeistMono_400Regular', fontSize: 10, color: 'rgba(255,255,255,0.3)', fontStyle: 'italic', marginBottom: 10 },
-  barBg: { height: 4, backgroundColor: 'rgba(255,255,255,0.07)', borderRadius: 2 },
+  yearGridCard: { flex: 1, backgroundColor: colors.bgSurface, borderRadius: radius.lg, padding: 14, borderWidth: 1, borderColor: colors.border },
+  yearGridLabel: { fontFamily: font.regular, fontSize: fontSize.xs, color: colors.textMuted, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 6 },
+  yearGridVal: { fontFamily: font.medium, fontSize: 26, color: colors.textPrimary, marginBottom: 2 },
+  yearGridSub: { fontFamily: font.regular, fontSize: fontSize.xs, color: colors.textMuted, fontStyle: 'italic', marginBottom: 10 },
+  barBg: { height: 4, backgroundColor: colors.border, borderRadius: 2 },
   barFill: { height: 4, borderRadius: 2 },
-  yearMetrics: { flexDirection: 'row', backgroundColor: 'rgba(255,255,255,0.04)', borderRadius: 16, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)', marginBottom: 16 },
+  yearMetrics: { flexDirection: 'row', backgroundColor: colors.bgSurface, borderRadius: radius.lg, overflow: 'hidden', borderWidth: 1, borderColor: colors.border, marginBottom: spacing.md },
   yearMetricItem: { flex: 1, padding: 14, alignItems: 'center' },
-  yearMetricVal: { fontFamily: 'GeistMono_500Medium', fontSize: 28, marginBottom: 4 },
-  yearMetricLabel: { fontFamily: 'GeistMono_400Regular', fontSize: 9, color: 'rgba(255,255,255,0.25)' },
-  badgeTitle: { fontFamily: 'GeistMono_400Regular', fontSize: 9, color: 'rgba(255,255,255,0.3)', letterSpacing: 2, textTransform: 'uppercase', marginBottom: 12 },
+  yearMetricVal: { fontFamily: font.medium, fontSize: 28, marginBottom: 4 },
+  yearMetricLabel: { fontFamily: font.regular, fontSize: fontSize.xs, color: colors.textDisabled },
+  badgeTitle: { fontFamily: font.regular, fontSize: fontSize.xs, color: colors.textMuted, letterSpacing: 2, textTransform: 'uppercase', marginBottom: spacing.sm },
   badgeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
-  badgeItem: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 7, backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 20, borderWidth: 1, borderColor: 'rgba(57,255,20,0.25)' },
-  badgeText: { fontFamily: 'GeistMono_500Medium', fontSize: 12, color: '#39FF14' },
-  rankBox: { alignItems: 'center', paddingVertical: 12, marginBottom: 8 },
-  rankText: { fontFamily: 'GeistMono_400Regular', fontSize: 14, color: 'rgba(255,255,255,0.4)', lineHeight: 24, textAlign: 'center' },
+  badgeItem: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 7, backgroundColor: colors.bgSurface, borderRadius: 20, borderWidth: 1, borderColor: colors.profitBorder },
+  badgeText: { fontFamily: font.medium, fontSize: fontSize.sm, color: colors.profit },
+  rankBox: { alignItems: 'center', paddingVertical: 12, marginBottom: spacing.sm },
+  rankText: { fontFamily: font.regular, fontSize: fontSize.md, color: colors.textMuted, lineHeight: 24, textAlign: 'center' },
 
   // 공통
-  watermark: { fontFamily: 'GeistMono_400Regular', fontSize: 9, color: 'rgba(255,255,255,0.15)', textAlign: 'center', letterSpacing: 1, marginTop: 20 },
-  shareBtn: { backgroundColor: '#e8410a', borderRadius: 10, padding: 16, alignItems: 'center' },
-  shareBtnText: { fontFamily: 'GeistMono_500Medium', fontSize: 14, color: '#ffffff' },
-  saveBtn: { backgroundColor: '#161614', borderWidth: 1, borderColor: '#2a2826', borderRadius: 10, padding: 16, alignItems: 'center' },
-  saveBtnText: { fontFamily: 'GeistMono_400Regular', fontSize: 14, color: '#f0ede8' },
+  watermark: { fontFamily: font.regular, fontSize: fontSize.xs, color: colors.textDisabled, textAlign: 'center', letterSpacing: 1, marginTop: spacing.md },
+  shareBtn: { backgroundColor: colors.accent, borderRadius: radius.md, padding: spacing.md, alignItems: 'center' },
+  shareBtnText: { fontFamily: font.medium, fontSize: fontSize.md, color: '#ffffff' },
+  saveBtn: { backgroundColor: colors.bgSurface, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: spacing.md, alignItems: 'center' },
+  saveBtnText: { fontFamily: font.regular, fontSize: fontSize.md, color: colors.textPrimary },
 });

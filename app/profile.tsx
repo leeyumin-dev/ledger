@@ -14,6 +14,7 @@ import {
   getMonitoringStatus, setNameMap, getNameMap,
 } from '../src/lib/screenTime';
 import { AppTokenLabel } from '../src/components/AppTokenLabel';
+import { colors, font, fontSize, spacing, radius } from '../src/lib/theme';
 
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
@@ -309,7 +310,7 @@ export default function ProfileScreen() {
   const disposableHours = 24 - parseFloat(sleepHours || '0') - parseFloat(workHours || '0');
 
   return (
-    <View style={{ flex: 1, backgroundColor: '#0f0f0f' }}>
+    <View style={{ flex: 1, backgroundColor: colors.bgBase }}>
       {/* 헤더 */}
       <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
@@ -336,7 +337,7 @@ export default function ProfileScreen() {
               value={nickname}
               onChangeText={setNickname}
               placeholder="닉네임 입력"
-              placeholderTextColor="#5a5754"
+              placeholderTextColor={colors.textMuted}
               maxLength={20}
             />
           </View>
@@ -360,7 +361,7 @@ export default function ProfileScreen() {
               onChangeText={setSleepHours}
               keyboardType="decimal-pad"
               placeholder="7.5"
-              placeholderTextColor="#5a5754"
+              placeholderTextColor={colors.textMuted}
             />
             <Text style={styles.inputUnit}>시간</Text>
           </View>
@@ -380,7 +381,7 @@ export default function ProfileScreen() {
               onChangeText={setWorkHours}
               keyboardType="decimal-pad"
               placeholder="8.0"
-              placeholderTextColor="#5a5754"
+              placeholderTextColor={colors.textMuted}
             />
             <Text style={styles.inputUnit}>시간</Text>
           </View>
@@ -480,7 +481,7 @@ export default function ProfileScreen() {
         onRequestClose={pendingTokenKeys.length > 0 ? cancelNameInput : () => setAppPickerVisible(false)}
       >
         <KeyboardAvoidingView
-          style={{ flex: 1, backgroundColor: '#0f0f0f' }}
+          style={{ flex: 1, backgroundColor: colors.bgBase }}
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         >
           <View style={styles.modalHeader}>
@@ -507,7 +508,7 @@ export default function ProfileScreen() {
             <>
               <Text style={styles.nicknameModalHint}>
                 앱 이름을 직접 입력해주세요{'\n'}
-                <Text style={{ color: '#5a5754' }}>예: 유튜브, 인스타그램</Text>
+                <Text style={{ color: colors.textMuted }}>예: 유튜브, 인스타그램</Text>
               </Text>
               <ScrollView contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 32 }}>
                 {pendingTokenKeys.map((key, i) => (
@@ -521,7 +522,7 @@ export default function ProfileScreen() {
                     <TextInput
                       style={[styles.nicknameRowInput, { flex: 1 }]}
                       placeholder="앱 이름 입력 (필수)"
-                      placeholderTextColor="#3a3836"
+                      placeholderTextColor={colors.textDisabled}
                       value={nameInputs[key] ?? ''}
                       onChangeText={text => setNameInputs(prev => ({ ...prev, [key]: text }))}
                       maxLength={20}
@@ -575,7 +576,7 @@ export default function ProfileScreen() {
                             key={name}
                             style={[styles.trackedRow, i < orphanedApps.length - 1 && styles.trackedRowBorder]}
                           >
-                            <Text style={[styles.trackedName, { color: '#5a5754' }]}>{name}</Text>
+                            <Text style={[styles.trackedName, { color: colors.textMuted }]}>{name}</Text>
                             <TouchableOpacity
                               onPress={() => handleReselect(name)}
                               disabled={picking}
@@ -612,9 +613,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
-    paddingBottom: 12,
+    paddingBottom: spacing.sm,
     borderBottomWidth: 0.5,
-    borderBottomColor: 'rgba(255,255,255,0.06)',
+    borderBottomColor: colors.borderSub,
   },
   backBtn: {
     width: 36,
@@ -624,31 +625,31 @@ const styles = StyleSheet.create({
   },
   backIcon: {
     fontSize: 28,
-    color: '#f0ede8',
+    color: colors.textPrimary,
     lineHeight: 32,
   },
   headerTitle: {
-    fontFamily: 'GeistMono_500Medium',
+    fontFamily: font.medium,
     fontSize: 15,
-    color: '#f0ede8',
+    color: colors.textPrimary,
   },
   content: {
-    paddingHorizontal: 24,
-    paddingTop: 24,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.lg,
   },
   sectionLabel: {
-    fontFamily: 'GeistMono_400Regular',
-    fontSize: 10,
-    color: '#5a5754',
+    fontFamily: font.regular,
+    fontSize: fontSize.xs,
+    color: colors.textMuted,
     letterSpacing: 1.5,
     textTransform: 'uppercase',
-    marginBottom: 12,
+    marginBottom: spacing.sm,
   },
   infoCard: {
-    backgroundColor: '#161614',
-    borderRadius: 12,
+    backgroundColor: colors.bgSurface,
+    borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: '#2a2826',
+    borderColor: colors.border,
     overflow: 'hidden',
   },
   infoRow: {
@@ -656,69 +657,69 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingVertical: 14,
-    paddingHorizontal: 16,
+    paddingHorizontal: spacing.md,
   },
   infoLabel: {
-    fontFamily: 'GeistMono_400Regular',
-    fontSize: 12,
-    color: '#5a5754',
+    fontFamily: font.regular,
+    fontSize: fontSize.sm,
+    color: colors.textMuted,
     width: 64,
   },
   infoValue: {
-    fontFamily: 'GeistMono_400Regular',
+    fontFamily: font.regular,
     fontSize: 13,
-    color: 'rgba(255,255,255,0.4)',
+    color: colors.textDisabled,
     flex: 1,
     textAlign: 'right',
   },
   nicknameInput: {
-    fontFamily: 'GeistMono_500Medium',
-    fontSize: 14,
-    color: '#f0ede8',
+    fontFamily: font.medium,
+    fontSize: fontSize.md,
+    color: colors.textPrimary,
     flex: 1,
     textAlign: 'right',
     padding: 0,
   },
   divider: {
     height: 0.5,
-    backgroundColor: '#2a2826',
-    marginHorizontal: 16,
+    backgroundColor: colors.border,
+    marginHorizontal: spacing.md,
   },
   infoHint: {
-    fontFamily: 'GeistMono_400Regular',
-    fontSize: 10,
-    color: '#5a5754',
-    marginTop: 8,
+    fontFamily: font.regular,
+    fontSize: fontSize.xs,
+    color: colors.textMuted,
+    marginTop: spacing.sm,
     marginBottom: 4,
     paddingHorizontal: 4,
   },
   thickDivider: {
     height: 1.5,
-    backgroundColor: '#3a3836',
+    backgroundColor: colors.textDisabled,
     marginVertical: 20,
   },
   thinDivider: {
     height: 0.5,
-    backgroundColor: '#2a2826',
+    backgroundColor: colors.border,
     marginVertical: 4,
   },
   inputRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 12,
+    paddingVertical: spacing.sm,
   },
   inputLeft: { flex: 1 },
   inputLabel: {
-    fontFamily: 'GeistMono_500Medium',
+    fontFamily: font.medium,
     fontSize: 13,
-    color: '#f0ede8',
+    color: colors.textPrimary,
     marginBottom: 3,
   },
   inputSub: {
-    fontFamily: 'GeistMono_400Regular',
-    fontSize: 10,
-    color: '#5a5754',
+    fontFamily: font.regular,
+    fontSize: fontSize.xs,
+    color: colors.textMuted,
   },
   inputRight: {
     flexDirection: 'row',
@@ -726,65 +727,65 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   input: {
-    backgroundColor: '#161614',
+    backgroundColor: colors.bgSurface,
     borderWidth: 1,
-    borderColor: '#2a2826',
-    borderRadius: 8,
+    borderColor: colors.border,
+    borderRadius: radius.sm,
     padding: 10,
     width: 64,
-    color: '#f0ede8',
-    fontFamily: 'GeistMono_500Medium',
-    fontSize: 14,
+    color: colors.textPrimary,
+    fontFamily: font.medium,
+    fontSize: fontSize.md,
     textAlign: 'center',
   },
   inputUnit: {
-    fontFamily: 'GeistMono_400Regular',
-    fontSize: 12,
-    color: '#5a5754',
+    fontFamily: font.regular,
+    fontSize: fontSize.sm,
+    color: colors.textMuted,
   },
   resultBox: {
-    backgroundColor: '#161614',
-    borderRadius: 12,
+    backgroundColor: colors.bgSurface,
+    borderRadius: radius.md,
     padding: 20,
     alignItems: 'center',
-    marginTop: 8,
+    marginTop: spacing.sm,
     marginBottom: 4,
   },
   resultLabel: {
-    fontFamily: 'GeistMono_400Regular',
-    fontSize: 10,
-    color: '#5a5754',
+    fontFamily: font.regular,
+    fontSize: fontSize.xs,
+    color: colors.textMuted,
     letterSpacing: 1.2,
     textTransform: 'uppercase',
-    marginBottom: 8,
+    marginBottom: spacing.sm,
   },
   resultValue: {
-    fontFamily: 'GeistMono_500Medium',
+    fontFamily: font.medium,
     fontSize: 36,
-    color: '#f0ede8',
+    color: colors.textPrimary,
     marginBottom: 6,
   },
   resultSub: {
-    fontFamily: 'GeistMono_400Regular',
-    fontSize: 10,
-    color: '#5a5754',
+    fontFamily: font.regular,
+    fontSize: fontSize.xs,
+    color: colors.textMuted,
   },
   permissionBtn: {
-    backgroundColor: '#1c1c1a',
+    backgroundColor: colors.bgRaised,
     borderWidth: 1,
-    borderColor: '#2a2826',
-    borderRadius: 8,
+    borderColor: colors.border,
+    borderRadius: radius.sm,
     paddingHorizontal: 14,
-    paddingVertical: 8,
+    paddingVertical: spacing.sm,
   },
   permissionBtnActive: {
     backgroundColor: 'rgba(57,255,20,0.08)',
     borderColor: 'rgba(57,255,20,0.3)',
   },
   permissionBtnText: {
-    fontFamily: 'GeistMono_400Regular',
-    fontSize: 12,
-    color: '#5a5754',
+    fontFamily: font.regular,
+    fontSize: fontSize.sm,
+    color: colors.textMuted,
   },
   permissionBtnTextActive: {
     color: '#39FF14',
@@ -793,113 +794,113 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: '#161614',
-    borderRadius: 10,
-    padding: 16,
-    marginBottom: 16,
+    backgroundColor: colors.bgSurface,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginBottom: spacing.md,
   },
   navBtnText: {
-    fontFamily: 'GeistMono_400Regular',
+    fontFamily: font.regular,
     fontSize: 13,
-    color: '#f0ede8',
+    color: colors.textPrimary,
   },
   navBtnArrow: {
-    fontFamily: 'GeistMono_400Regular',
+    fontFamily: font.regular,
     fontSize: 18,
-    color: '#5a5754',
+    color: colors.textMuted,
   },
   saveBtn: {
-    backgroundColor: '#e8410a',
-    borderRadius: 10,
-    padding: 16,
+    backgroundColor: colors.accent,
+    borderRadius: radius.md,
+    padding: spacing.md,
     alignItems: 'center',
   },
   saveBtnDisabled: { opacity: 0.5 },
   saveBtnText: {
-    fontFamily: 'GeistMono_500Medium',
-    fontSize: 14,
+    fontFamily: font.medium,
+    fontSize: fontSize.md,
     color: '#ffffff',
   },
   logoutBtn: {
-    padding: 16,
+    padding: spacing.md,
     alignItems: 'center',
   },
   logoutText: {
-    fontFamily: 'GeistMono_400Regular',
+    fontFamily: font.regular,
     fontSize: 13,
-    color: '#5a5754',
+    color: colors.textMuted,
   },
   // 모달
   modalContainer: {
     flex: 1,
-    backgroundColor: '#0f0f0f',
+    backgroundColor: colors.bgBase,
   },
   modalHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
-    paddingVertical: 16,
+    paddingVertical: spacing.md,
     borderBottomWidth: 0.5,
-    borderBottomColor: '#2a2826',
+    borderBottomColor: colors.border,
   },
   modalTitle: {
-    fontFamily: 'GeistMono_500Medium',
+    fontFamily: font.medium,
     fontSize: 15,
-    color: '#f0ede8',
+    color: colors.textPrimary,
   },
   modalDone: {
-    fontFamily: 'GeistMono_500Medium',
-    fontSize: 14,
-    color: '#e8410a',
+    fontFamily: font.medium,
+    fontSize: fontSize.md,
+    color: colors.accent,
   },
   modalEdit: {
-    fontFamily: 'GeistMono_400Regular',
+    fontFamily: font.regular,
     fontSize: 13,
-    color: '#5a5754',
+    color: colors.textMuted,
   },
   modalEditActive: {
-    color: '#e8410a',
+    color: colors.accent,
   },
   pickingBanner: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#1c1c1a',
-    borderRadius: 8,
+    backgroundColor: colors.bgRaised,
+    borderRadius: radius.sm,
     marginHorizontal: 20,
-    marginTop: 12,
+    marginTop: spacing.sm,
     paddingVertical: 10,
     paddingHorizontal: 14,
   },
   pickingBannerText: {
-    fontFamily: 'GeistMono_400Regular',
+    fontFamily: font.regular,
     fontSize: 13,
-    color: '#f0ede8',
+    color: colors.textPrimary,
   },
   modalContent: {
     paddingHorizontal: 20,
-    paddingTop: 24,
+    paddingTop: spacing.lg,
   },
   modalSectionLabel: {
-    fontFamily: 'GeistMono_400Regular',
-    fontSize: 10,
-    color: '#5a5754',
+    fontFamily: font.regular,
+    fontSize: fontSize.xs,
+    color: colors.textMuted,
     letterSpacing: 1.5,
     textTransform: 'uppercase',
-    marginBottom: 12,
+    marginBottom: spacing.sm,
   },
   emptyText: {
-    fontFamily: 'GeistMono_400Regular',
+    fontFamily: font.regular,
     fontSize: 13,
-    color: '#3a3836',
+    color: colors.textDisabled,
     paddingVertical: 20,
     textAlign: 'center',
   },
   trackedList: {
-    backgroundColor: '#161614',
-    borderRadius: 12,
+    backgroundColor: colors.bgSurface,
+    borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: '#2a2826',
+    borderColor: colors.border,
     overflow: 'hidden',
     marginBottom: 20,
   },
@@ -907,99 +908,99 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 14,
-    paddingHorizontal: 16,
+    paddingHorizontal: spacing.md,
     minHeight: 52,
   },
   trackedName: {
-    fontFamily: 'GeistMono_400Regular',
+    fontFamily: font.regular,
     fontSize: 13,
-    color: '#f0ede8',
+    color: colors.textPrimary,
     flex: 1,
   },
   trackedRowBorder: {
     borderBottomWidth: 0.5,
-    borderBottomColor: '#2a2826',
+    borderBottomColor: colors.border,
   },
   removeBtn: {
     paddingHorizontal: 10,
     paddingVertical: 4,
-    marginLeft: 12,
+    marginLeft: spacing.sm,
   },
   removeBtnText: {
-    fontFamily: 'GeistMono_400Regular',
-    fontSize: 14,
-    color: '#5a5754',
+    fontFamily: font.regular,
+    fontSize: fontSize.md,
+    color: colors.textMuted,
   },
   orphanedLabel: {
-    fontFamily: 'GeistMono_400Regular',
-    fontSize: 11,
-    color: '#5a5754',
+    fontFamily: font.regular,
+    fontSize: fontSize.xs,
+    color: colors.textMuted,
     marginTop: 20,
-    marginBottom: 8,
+    marginBottom: spacing.sm,
     paddingHorizontal: 4,
   },
   reselectBtn: {
     paddingHorizontal: 10,
     paddingVertical: 4,
-    marginLeft: 12,
+    marginLeft: spacing.sm,
     borderRadius: 6,
     borderWidth: 1,
-    borderColor: '#2a2826',
+    borderColor: colors.border,
   },
   reselectBtnText: {
-    fontFamily: 'GeistMono_400Regular',
-    fontSize: 12,
-    color: '#e8410a',
+    fontFamily: font.regular,
+    fontSize: fontSize.sm,
+    color: colors.accent,
   },
   addBtn: {
     paddingVertical: 14,
-    borderRadius: 10,
+    borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: '#2a2826',
+    borderColor: colors.border,
     alignItems: 'center',
   },
   addBtnText: {
-    fontFamily: 'GeistMono_400Regular',
-    fontSize: 14,
-    color: '#f0ede8',
+    fontFamily: font.regular,
+    fontSize: fontSize.md,
+    color: colors.textPrimary,
   },
 
   inlineNicknameInput: {
-    fontFamily: 'GeistMono_400Regular',
-    fontSize: 11,
-    color: '#9a9690',
+    fontFamily: font.regular,
+    fontSize: fontSize.xs,
+    color: colors.textSecondary,
     padding: 0,
     borderBottomWidth: 0.5,
-    borderBottomColor: '#2a2826',
+    borderBottomColor: colors.border,
     paddingBottom: 2,
   },
   inlineNicknameLabel: {
-    fontFamily: 'GeistMono_400Regular',
-    fontSize: 11,
-    color: '#5a5754',
+    fontFamily: font.regular,
+    fontSize: fontSize.xs,
+    color: colors.textMuted,
   },
 
   // 별명 입력 모달
   nicknameModalHint: {
-    fontFamily: 'GeistMono_400Regular',
-    fontSize: 11,
-    color: '#9a9690',
+    fontFamily: font.regular,
+    fontSize: fontSize.xs,
+    color: colors.textSecondary,
     lineHeight: 18,
-    paddingHorizontal: 24,
+    paddingHorizontal: spacing.lg,
     paddingBottom: 20,
   },
   nicknameRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: spacing.sm,
     paddingVertical: 14,
     borderBottomWidth: 0.5,
-    borderBottomColor: '#2a2826',
+    borderBottomColor: colors.border,
   },
   nicknameRowInput: {
-    fontFamily: 'GeistMono_400Regular',
+    fontFamily: font.regular,
     fontSize: 13,
-    color: '#f0ede8',
+    color: colors.textPrimary,
     flex: 1,
     textAlign: 'right',
     padding: 0,
@@ -1007,26 +1008,26 @@ const styles = StyleSheet.create({
   nicknameSkipBtn: {
     flex: 1,
     paddingVertical: 14,
-    borderRadius: 10,
+    borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: '#2a2826',
+    borderColor: colors.border,
     alignItems: 'center',
   },
   nicknameSkipText: {
-    fontFamily: 'GeistMono_400Regular',
+    fontFamily: font.regular,
     fontSize: 13,
-    color: '#5a5754',
+    color: colors.textMuted,
   },
   nicknameSaveBtn: {
     flex: 2,
     paddingVertical: 14,
-    borderRadius: 10,
-    backgroundColor: '#f0ede8',
+    borderRadius: radius.md,
+    backgroundColor: colors.textPrimary,
     alignItems: 'center',
   },
   nicknameSaveText: {
-    fontFamily: 'GeistMono_500Medium',
+    fontFamily: font.medium,
     fontSize: 13,
-    color: '#0f0f0f',
+    color: colors.bgBase,
   },
 });

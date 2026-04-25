@@ -10,6 +10,7 @@ import { supabase } from '../../src/lib/supabase';
 import { AppHeader } from '../../src/components/AppHeader';
 import { useSyncedAt, useSync } from '../../src/lib/SyncContext';
 import { toLocalDateStr, getMonitoringStatus } from '../../src/lib/screenTime';
+import { colors, font, fontSize, spacing, radius } from '../../src/lib/theme';
 
 type AppUsage = {
     id: string;
@@ -27,20 +28,18 @@ type BudgetWarning = {
 };
 
 function getWarningColor(ratio: number) {
-    if (ratio >= 1.2) return '#ff4444';
-    if (ratio >= 1.0) return '#f87171';
-    if (ratio >= 0.9) return '#fb923c';
-    return '#fbbf24';
+    if (ratio >= 1.0) return colors.loss;
+    return colors.warning;
 }
 
 function getWarningBg(ratio: number) {
-    if (ratio >= 1.0) return 'rgba(248,113,113,0.08)';
-    return 'rgba(251,191,36,0.06)';
+    if (ratio >= 1.0) return colors.lossBg;
+    return colors.warningBg;
 }
 
 function getWarningBorder(ratio: number) {
-    if (ratio >= 1.0) return 'rgba(248,113,113,0.25)';
-    return 'rgba(251,191,36,0.2)';
+    if (ratio >= 1.0) return colors.lossBorder;
+    return colors.warningBorder;
 }
 
 function fmt(m: number) {
@@ -233,7 +232,7 @@ export default function TodayScreen() {
     const isProfit = netMinutes >= 0;
 
     return (
-        <View style={{ flex: 1, backgroundColor: '#0f0f0f' }}>
+        <View style={{ flex: 1, backgroundColor: colors.bgBase }}>
             <AppHeader />
             <ScrollView style={styles.container}>
 
@@ -392,7 +391,7 @@ export default function TodayScreen() {
                     <Text style={[styles.verdictLabel, { color: isProfit ? 'rgba(74,222,128,0.7)' : 'rgba(248,113,133,0.7)' }]}>
                         {isProfit ? '당기 순이익' : '당기 순손실'}
                     </Text>
-                    <Text style={[styles.verdictValue, { color: isProfit ? '#4ade80' : '#f87171' }]}>
+                    <Text style={[styles.verdictValue, { color: isProfit ? colors.profit : colors.loss }]}>
                         {isProfit ? '＋' : '－'} {netHours}h {netMins}m
                     </Text>
                     {prevNetMinutes !== null && (() => {
@@ -432,7 +431,7 @@ export default function TodayScreen() {
                                         <Text style={styles.autoTrackNoticeLabel}>자동 수집 중 — 추가 불필요</Text>
                                         <View style={styles.autoTrackNoticeList}>
                                             {[...autoTrackedApps].map(name => (
-                                                <Text key={name} style={{ fontFamily: 'GeistMono_400Regular', fontSize: 12, color: '#4ade80', marginBottom: 2 }}>{name}</Text>
+                                                <Text key={name} style={{ fontFamily: font.regular, fontSize: fontSize.sm, color: colors.profit, marginBottom: 2 }}>{name}</Text>
                                             ))}
                                         </View>
                                     </View>
@@ -542,73 +541,73 @@ function Row({ label, value, indent, bold, loss, profit, muted, auto }: {
 }
 
 const styles = StyleSheet.create({
-    nudgeBox: { flexDirection: 'row', alignItems: 'flex-start', backgroundColor: '#161614', borderWidth: 1, borderColor: '#2a2826', borderRadius: 10, padding: 14, marginBottom: 16, gap: 12 },
-    nudgeTitle: { fontFamily: 'GeistMono_500Medium', fontSize: 12, color: '#f0ede8', marginBottom: 6 },
-    nudgeSub: { fontFamily: 'GeistMono_400Regular', fontSize: 10, color: '#5a5754', lineHeight: 16 },
-    nudgeDismiss: { fontFamily: 'GeistMono_400Regular', fontSize: 14, color: '#3a3836' },
-    container: { flex: 1, backgroundColor: '#0f0f0f', paddingHorizontal: 24 },
-    header: { paddingTop: 20, paddingBottom: 24 },
-    headerSub: { fontFamily: 'GeistMono_400Regular', fontSize: 11, color: '#5a5754', letterSpacing: 1, marginBottom: 6 },
-    headerTitle: { fontFamily: 'GeistMono_500Medium', fontSize: 28, color: '#f0ede8', letterSpacing: -0.5 },
-    syncedAtLabel: { fontFamily: 'GeistMono_400Regular', fontSize: 10, color: '#3a3836', marginTop: 6 },
-    thickDivider: { height: 1.5, backgroundColor: '#3a3836', marginVertical: 12 },
-    thinDivider: { height: 0.5, backgroundColor: '#2a2826', marginVertical: 8 },
-    sectionLabel: { fontFamily: 'GeistMono_400Regular', fontSize: 10, color: '#5a5754', letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 10 },
-    row: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6 },
-    rowIndent: { paddingLeft: 16 },
+    nudgeBox: { flexDirection: 'row', alignItems: 'flex-start', backgroundColor: colors.bgSurface, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: spacing.md, marginBottom: spacing.md, gap: spacing.sm },
+    nudgeTitle: { fontFamily: font.medium, fontSize: fontSize.sm, color: colors.textPrimary, marginBottom: 6 },
+    nudgeSub: { fontFamily: font.regular, fontSize: fontSize.xs, color: colors.textMuted, lineHeight: 16 },
+    nudgeDismiss: { fontFamily: font.regular, fontSize: fontSize.md, color: colors.textDisabled },
+    container: { flex: 1, backgroundColor: colors.bgBase, paddingHorizontal: spacing.lg },
+    header: { paddingTop: spacing.md, paddingBottom: spacing.lg },
+    headerSub: { fontFamily: font.regular, fontSize: fontSize.xs, color: colors.textMuted, letterSpacing: 1, marginBottom: 6 },
+    headerTitle: { fontFamily: font.medium, fontSize: fontSize.xl, color: colors.textPrimary, letterSpacing: -0.5 },
+    syncedAtLabel: { fontFamily: font.regular, fontSize: fontSize.xs, color: colors.textDisabled, marginTop: 6 },
+    thickDivider: { height: 1.5, backgroundColor: colors.border, marginVertical: spacing.sm },
+    thinDivider: { height: 0.5, backgroundColor: colors.borderSub, marginVertical: spacing.sm },
+    sectionLabel: { fontFamily: font.regular, fontSize: fontSize.xs, color: colors.textMuted, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: spacing.sm },
+    row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: 6 },
+    rowIndent: { paddingLeft: spacing.md },
     rowLabelWrap: { flexDirection: 'row', alignItems: 'center', flex: 1 },
-    rowLabel: { fontFamily: 'GeistMono_400Regular', fontSize: 13, color: '#9a9690' },
-    rowValue: { fontFamily: 'GeistMono_400Regular', fontSize: 13, color: '#f0ede8' },
-    autoBadge: { fontFamily: 'GeistMono_400Regular', fontSize: 9, color: '#4ade80', borderWidth: 1, borderColor: 'rgba(74,222,128,0.4)', borderRadius: 4, paddingHorizontal: 4, paddingVertical: 1 },
-    boldText: { fontFamily: 'GeistMono_500Medium', fontSize: 14, color: '#f0ede8' },
-    lossText: { color: '#f87171' },
-    profitText: { color: '#4ade80' },
-    mutedText: { color: '#5a5754' },
-    emptyRow: { fontFamily: 'GeistMono_400Regular', fontSize: 12, color: '#3a3836', paddingLeft: 16, paddingVertical: 6 },
-    verdictBox: { borderRadius: 12, padding: 20, alignItems: 'center', borderWidth: 1 },
-    verdictLoss: { backgroundColor: 'rgba(248,113,133,0.1)', borderColor: 'rgba(248,113,133,0.2)' },
-    verdictProfit: { backgroundColor: 'rgba(74,222,128,0.1)', borderColor: 'rgba(74,222,128,0.2)' },
-    verdictLabel: { fontFamily: 'GeistMono_400Regular', fontSize: 10, letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 8 },
-    verdictValue: { fontFamily: 'GeistMono_500Medium', fontSize: 32, letterSpacing: -0.5 },
-    verdictDiff: { fontFamily: 'GeistMono_400Regular', fontSize: 11, marginTop: 8 },
-    longPressHint: { fontFamily: 'GeistMono_400Regular', fontSize: 10, color: '#3a3836', textAlign: 'center', marginTop: 16 },
-    fab: { position: 'absolute', bottom: 32, right: 24, width: 52, height: 52, borderRadius: 26, backgroundColor: '#e8410a', justifyContent: 'center', alignItems: 'center' },
+    rowLabel: { fontFamily: font.regular, fontSize: 13, color: colors.textSecondary },
+    rowValue: { fontFamily: font.regular, fontSize: 13, color: colors.textPrimary },
+    autoBadge: { fontFamily: font.regular, fontSize: fontSize.xs, color: colors.profit, borderWidth: 1, borderColor: colors.profitBorder, borderRadius: 4, paddingHorizontal: 4, paddingVertical: 1 },
+    boldText: { fontFamily: font.medium, fontSize: fontSize.md, color: colors.textPrimary },
+    lossText: { color: colors.loss },
+    profitText: { color: colors.profit },
+    mutedText: { color: colors.textMuted },
+    emptyRow: { fontFamily: font.regular, fontSize: fontSize.sm, color: colors.textDisabled, paddingLeft: spacing.md, paddingVertical: 6 },
+    verdictBox: { borderRadius: radius.md, padding: spacing.md, alignItems: 'center', borderWidth: 1 },
+    verdictLoss: { backgroundColor: colors.lossBg, borderColor: colors.lossBorder },
+    verdictProfit: { backgroundColor: colors.profitBg, borderColor: colors.profitBorder },
+    verdictLabel: { fontFamily: font.regular, fontSize: fontSize.xs, letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: spacing.sm },
+    verdictValue: { fontFamily: font.medium, fontSize: fontSize['2xl'], letterSpacing: -0.5 },
+    verdictDiff: { fontFamily: font.regular, fontSize: fontSize.xs, marginTop: spacing.sm },
+    longPressHint: { fontFamily: font.regular, fontSize: fontSize.xs, color: colors.textDisabled, textAlign: 'center', marginTop: spacing.md },
+    fab: { position: 'absolute', bottom: 32, right: spacing.lg, width: 52, height: 52, borderRadius: 26, backgroundColor: colors.accent, justifyContent: 'center', alignItems: 'center' },
     fabText: { fontSize: 24, color: 'white', lineHeight: 28 },
     modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
-    modalBox: { backgroundColor: '#161614', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 24 },
-    modalTitle: { fontFamily: 'GeistMono_500Medium', fontSize: 16, color: '#f0ede8', marginBottom: 20 },
-    modalInput: { backgroundColor: '#0f0f0f', borderWidth: 1, borderColor: '#2a2826', borderRadius: 10, padding: 14, color: '#f0ede8', fontFamily: 'GeistMono_400Regular', fontSize: 14, marginBottom: 12 },
-    categoryRow: { flexDirection: 'row', gap: 8, marginBottom: 16 },
-    catBtn: { flex: 1, padding: 10, borderRadius: 8, borderWidth: 1, borderColor: '#2a2826', alignItems: 'center' },
-    catBtnActive: { backgroundColor: '#e8410a', borderColor: '#e8410a' },
-    catText: { fontFamily: 'GeistMono_400Regular', fontSize: 12, color: '#5a5754' },
+    modalBox: { backgroundColor: colors.bgSurface, borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl, padding: spacing.lg },
+    modalTitle: { fontFamily: font.medium, fontSize: fontSize.lg, color: colors.textPrimary, marginBottom: spacing.md },
+    modalInput: { backgroundColor: colors.bgBase, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: spacing.md, color: colors.textPrimary, fontFamily: font.regular, fontSize: fontSize.md, marginBottom: spacing.sm },
+    categoryRow: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.md },
+    catBtn: { flex: 1, padding: 10, borderRadius: radius.sm, borderWidth: 1, borderColor: colors.border, alignItems: 'center' },
+    catBtnActive: { backgroundColor: colors.accent, borderColor: colors.accent },
+    catText: { fontFamily: font.regular, fontSize: fontSize.sm, color: colors.textMuted },
     catTextActive: { color: '#ffffff' },
-    modalBtn: { backgroundColor: '#e8410a', borderRadius: 10, padding: 16, alignItems: 'center', marginBottom: 8 },
-    modalBtnText: { fontFamily: 'GeistMono_500Medium', fontSize: 14, color: '#ffffff' },
-    modalCancel: { padding: 12, alignItems: 'center' },
-    modalCancelText: { fontFamily: 'GeistMono_400Regular', fontSize: 13, color: '#5a5754' },
-    modalBtnDisabled: { backgroundColor: '#2a2826' },
-    autoTrackWarning: { fontFamily: 'GeistMono_400Regular', fontSize: 11, color: '#f87171', marginBottom: 8, marginTop: -4 },
-    autoTrackNotice: { backgroundColor: 'rgba(74,222,128,0.06)', borderWidth: 1, borderColor: 'rgba(74,222,128,0.2)', borderRadius: 8, padding: 10, marginBottom: 16 },
-    autoTrackNoticeLabel: { fontFamily: 'GeistMono_400Regular', fontSize: 9, color: 'rgba(74,222,128,0.6)', letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 8 },
+    modalBtn: { backgroundColor: colors.accent, borderRadius: radius.md, padding: spacing.md, alignItems: 'center', marginBottom: spacing.sm },
+    modalBtnText: { fontFamily: font.medium, fontSize: fontSize.md, color: '#ffffff' },
+    modalCancel: { padding: spacing.sm, alignItems: 'center' },
+    modalCancelText: { fontFamily: font.regular, fontSize: 13, color: colors.textMuted },
+    modalBtnDisabled: { backgroundColor: colors.border },
+    autoTrackWarning: { fontFamily: font.regular, fontSize: fontSize.xs, color: colors.loss, marginBottom: spacing.sm, marginTop: -4 },
+    autoTrackNotice: { backgroundColor: colors.profitBg, borderWidth: 1, borderColor: colors.profitBorder, borderRadius: radius.sm, padding: 10, marginBottom: spacing.md },
+    autoTrackNoticeLabel: { fontFamily: font.regular, fontSize: fontSize.xs, color: `${colors.profit}99`, letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: spacing.sm },
     autoTrackNoticeList: { gap: 2 },
-    quickLabel: { fontFamily: 'GeistMono_400Regular', fontSize: 10, color: '#5a5754', letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 8 },
+    quickLabel: { fontFamily: font.regular, fontSize: fontSize.xs, color: colors.textMuted, letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: spacing.sm },
     quickRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-    quickBtn: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20, borderWidth: 1, borderColor: '#2a2826' },
-    quickBtnText: { fontFamily: 'GeistMono_400Regular', fontSize: 12, color: '#5a5754' },
-    warnBox: { borderWidth: 1, borderRadius: 10, padding: 12, marginBottom: 12 },
+    quickBtn: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20, borderWidth: 1, borderColor: colors.border },
+    quickBtnText: { fontFamily: font.regular, fontSize: fontSize.sm, color: colors.textMuted },
+    warnBox: { borderWidth: 1, borderRadius: radius.md, padding: spacing.sm, marginBottom: spacing.sm },
     warnMain: { flexDirection: 'row', alignItems: 'center', gap: 7 },
     warnDot: { width: 6, height: 6, borderRadius: 3, flexShrink: 0 },
-    warnName: { fontFamily: 'GeistMono_500Medium', fontSize: 11, flex: 1 },
-    warnStatus: { fontFamily: 'GeistMono_500Medium', fontSize: 11 },
-    warnPct: { fontFamily: 'GeistMono_400Regular', fontSize: 10 },
-    warnBarBg: { height: 3, backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 2, marginTop: 7, marginBottom: 4 },
+    warnName: { fontFamily: font.medium, fontSize: fontSize.xs, flex: 1 },
+    warnStatus: { fontFamily: font.medium, fontSize: fontSize.xs },
+    warnPct: { fontFamily: font.regular, fontSize: fontSize.xs },
+    warnBarBg: { height: 3, backgroundColor: colors.borderSub, borderRadius: 2, marginTop: 7, marginBottom: 4 },
     warnBar: { height: 3, borderRadius: 2 },
-    warnToggle: { flexDirection: 'row', alignItems: 'center', paddingTop: 7, marginTop: 4, borderTopWidth: 0.5, borderTopColor: 'rgba(255,255,255,0.06)' },
-    warnToggleText: { fontFamily: 'GeistMono_400Regular', fontSize: 10, flex: 1 },
-    warnArrow: { fontFamily: 'GeistMono_400Regular', fontSize: 9 },
-    warnExtraItem: { flexDirection: 'row', alignItems: 'center', gap: 7, paddingTop: 6, marginTop: 2, borderTopWidth: 0.5, borderTopColor: 'rgba(255,255,255,0.06)' },
-    warnExtraName: { fontFamily: 'GeistMono_400Regular', fontSize: 10, flex: 1 },
-    warnExtraStatus: { fontFamily: 'GeistMono_400Regular', fontSize: 10 },
-    warnExtraPct: { fontFamily: 'GeistMono_400Regular', fontSize: 10 },
+    warnToggle: { flexDirection: 'row', alignItems: 'center', paddingTop: 7, marginTop: 4, borderTopWidth: 0.5, borderTopColor: colors.borderSub },
+    warnToggleText: { fontFamily: font.regular, fontSize: fontSize.xs, flex: 1 },
+    warnArrow: { fontFamily: font.regular, fontSize: fontSize.xs },
+    warnExtraItem: { flexDirection: 'row', alignItems: 'center', gap: 7, paddingTop: 6, marginTop: 2, borderTopWidth: 0.5, borderTopColor: colors.borderSub },
+    warnExtraName: { fontFamily: font.regular, fontSize: fontSize.xs, flex: 1 },
+    warnExtraStatus: { fontFamily: font.regular, fontSize: fontSize.xs },
+    warnExtraPct: { fontFamily: font.regular, fontSize: fontSize.xs },
 });

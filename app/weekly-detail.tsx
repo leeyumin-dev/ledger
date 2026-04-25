@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
 import { supabase } from '../src/lib/supabase';
+import { colors, font, fontSize, spacing, radius } from '../src/lib/theme';
 
 type UsageItem = {
   id: string;
@@ -153,7 +154,7 @@ export default function WeeklyDetailScreen() {
         <Text style={[styles.verdictLabel, { color: isProfit ? 'rgba(74,222,128,0.7)' : 'rgba(248,113,133,0.7)' }]}>
           {isProfit ? '주간 순이익' : '주간 순손실'}
         </Text>
-        <Text style={[styles.verdictValue, { color: isProfit ? '#4ade80' : '#f87171' }]}>
+        <Text style={[styles.verdictValue, { color: isProfit ? colors.profit : colors.loss }]}>
           {isProfit ? '＋' : '－'} {fmt(Math.abs(netMinutes))}
         </Text>
         <Text style={styles.verdictSub}>{week}</Text>
@@ -188,28 +189,28 @@ function Row({ label, value, indent, bold, loss, profit, muted }: {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#0f0f0f', paddingHorizontal: 24 },
-  header: { paddingTop: 60, paddingBottom: 24 },
-  backBtn: { marginBottom: 16 },
-  backText: { fontFamily: 'GeistMono_400Regular', fontSize: 12, color: '#e8410a' },
-  headerSub: { fontFamily: 'GeistMono_400Regular', fontSize: 11, color: '#5a5754', letterSpacing: 1, marginBottom: 6 },
-  headerTitle: { fontFamily: 'GeistMono_500Medium', fontSize: 28, color: '#f0ede8', letterSpacing: -0.5 },
-  thickDivider: { height: 1.5, backgroundColor: '#3a3836', marginVertical: 12 },
-  thinDivider: { height: 0.5, backgroundColor: '#2a2826', marginVertical: 8 },
-  sectionLabel: { fontFamily: 'GeistMono_400Regular', fontSize: 10, color: '#5a5754', letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 10 },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6 },
-  rowIndent: { paddingLeft: 16 },
-  rowLabel: { fontFamily: 'GeistMono_400Regular', fontSize: 13, color: '#9a9690' },
-  rowValue: { fontFamily: 'GeistMono_400Regular', fontSize: 13, color: '#f0ede8' },
-  boldText: { fontFamily: 'GeistMono_500Medium', fontSize: 14, color: '#f0ede8' },
-  lossText: { color: '#f87171' },
-  profitText: { color: '#4ade80' },
-  mutedText: { color: '#5a5754' },
-  emptyRow: { fontFamily: 'GeistMono_400Regular', fontSize: 12, color: '#3a3836', paddingLeft: 16, paddingVertical: 6 },
-  verdictBox: { borderRadius: 12, padding: 20, alignItems: 'center', borderWidth: 1 },
-  verdictLoss: { backgroundColor: 'rgba(248,113,133,0.1)', borderColor: 'rgba(248,113,133,0.2)' },
-  verdictProfit: { backgroundColor: 'rgba(74,222,128,0.1)', borderColor: 'rgba(74,222,128,0.2)' },
-  verdictLabel: { fontFamily: 'GeistMono_400Regular', fontSize: 10, letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 8 },
-  verdictValue: { fontFamily: 'GeistMono_500Medium', fontSize: 32, letterSpacing: -0.5, marginBottom: 6 },
-  verdictSub: { fontFamily: 'GeistMono_400Regular', fontSize: 11, color: '#5a5754' },
+  container: { flex: 1, backgroundColor: colors.bgBase, paddingHorizontal: spacing.lg },
+  header: { paddingTop: 60, paddingBottom: spacing.lg },
+  backBtn: { marginBottom: spacing.md },
+  backText: { fontFamily: font.regular, fontSize: fontSize.sm, color: colors.accent },
+  headerSub: { fontFamily: font.regular, fontSize: fontSize.xs, color: colors.textMuted, letterSpacing: 1, marginBottom: 6 },
+  headerTitle: { fontFamily: font.medium, fontSize: fontSize.xl, color: colors.textPrimary, letterSpacing: -0.5 },
+  thickDivider: { height: 1.5, backgroundColor: colors.border, marginVertical: spacing.sm },
+  thinDivider: { height: 0.5, backgroundColor: colors.borderSub, marginVertical: spacing.sm },
+  sectionLabel: { fontFamily: font.regular, fontSize: fontSize.xs, color: colors.textMuted, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: spacing.sm },
+  row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: 6 },
+  rowIndent: { paddingLeft: spacing.md },
+  rowLabel: { fontFamily: font.regular, fontSize: 13, color: colors.textSecondary },
+  rowValue: { fontFamily: font.regular, fontSize: 13, color: colors.textPrimary },
+  boldText: { fontFamily: font.medium, fontSize: fontSize.md, color: colors.textPrimary },
+  lossText: { color: colors.loss },
+  profitText: { color: colors.profit },
+  mutedText: { color: colors.textMuted },
+  emptyRow: { fontFamily: font.regular, fontSize: fontSize.sm, color: colors.textDisabled, paddingLeft: spacing.md, paddingVertical: 6 },
+  verdictBox: { borderRadius: radius.md, padding: spacing.md, alignItems: 'center', borderWidth: 1 },
+  verdictLoss: { backgroundColor: colors.lossBg, borderColor: colors.lossBorder },
+  verdictProfit: { backgroundColor: colors.profitBg, borderColor: colors.profitBorder },
+  verdictLabel: { fontFamily: font.regular, fontSize: fontSize.xs, letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: spacing.sm },
+  verdictValue: { fontFamily: font.medium, fontSize: fontSize['2xl'], letterSpacing: -0.5, marginBottom: 6 },
+  verdictSub: { fontFamily: font.regular, fontSize: fontSize.xs, color: colors.textMuted },
 });

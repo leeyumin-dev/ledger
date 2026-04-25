@@ -5,6 +5,7 @@ import {
     ScrollView, Alert
 } from 'react-native';
 import { router } from 'expo-router';
+import { colors, font, fontSize, spacing, radius } from '../../src/lib/theme';
 import { supabase } from '../../src/lib/supabase';
 
 export default function SettingsScreen() {
@@ -86,7 +87,7 @@ export default function SettingsScreen() {
                         onChangeText={setSleepHours}
                         keyboardType="decimal-pad"
                         placeholder="7.5"
-                        placeholderTextColor="#5a5754"
+                        placeholderTextColor={colors.textMuted}
                     />
                     <Text style={styles.inputUnit}>시간</Text>
                 </View>
@@ -106,7 +107,7 @@ export default function SettingsScreen() {
                         onChangeText={setWorkHours}
                         keyboardType="decimal-pad"
                         placeholder="8.0"
-                        placeholderTextColor="#5a5754"
+                        placeholderTextColor={colors.textMuted}
                     />
                     <Text style={styles.inputUnit}>시간</Text>
                 </View>
@@ -160,40 +161,40 @@ export default function SettingsScreen() {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#0f0f0f',
-        paddingHorizontal: 24,
+        backgroundColor: colors.bgBase,
+        paddingHorizontal: spacing.lg,
     },
     header: {
         paddingTop: 72,
-        paddingBottom: 24,
+        paddingBottom: spacing.lg,
     },
     headerSub: {
-        fontFamily: 'GeistMono_400Regular',
-        fontSize: 11,
-        color: '#5a5754',
+        fontFamily: font.regular,
+        fontSize: fontSize.xs + 1,
+        color: colors.textMuted,
         letterSpacing: 1,
         marginBottom: 6,
     },
     headerTitle: {
-        fontFamily: 'GeistMono_500Medium',
+        fontFamily: font.medium,
         fontSize: 28,
-        color: '#f0ede8',
+        color: colors.textPrimary,
         letterSpacing: -0.5,
     },
     thickDivider: {
         height: 1.5,
-        backgroundColor: '#3a3836',
+        backgroundColor: colors.textDisabled,
         marginVertical: 12,
     },
     thinDivider: {
         height: 0.5,
-        backgroundColor: '#2a2826',
+        backgroundColor: colors.border,
         marginVertical: 4,
     },
     sectionLabel: {
-        fontFamily: 'GeistMono_400Regular',
-        fontSize: 10,
-        color: '#5a5754',
+        fontFamily: font.regular,
+        fontSize: fontSize.xs,
+        color: colors.textMuted,
         letterSpacing: 1.5,
         textTransform: 'uppercase',
         marginBottom: 12,
@@ -208,15 +209,15 @@ const styles = StyleSheet.create({
         flex: 1,
     },
     inputLabel: {
-        fontFamily: 'GeistMono_500Medium',
+        fontFamily: font.medium,
         fontSize: 13,
-        color: '#f0ede8',
+        color: colors.textPrimary,
         marginBottom: 3,
     },
     inputSub: {
-        fontFamily: 'GeistMono_400Regular',
-        fontSize: 10,
-        color: '#5a5754',
+        fontFamily: font.regular,
+        fontSize: fontSize.xs,
+        color: colors.textMuted,
     },
     inputRight: {
         flexDirection: 'row',
@@ -224,89 +225,89 @@ const styles = StyleSheet.create({
         gap: 6,
     },
     input: {
-        backgroundColor: '#161614',
+        backgroundColor: colors.bgSurface,
         borderWidth: 1,
-        borderColor: '#2a2826',
-        borderRadius: 8,
+        borderColor: colors.border,
+        borderRadius: radius.sm,
         padding: 10,
         width: 64,
-        color: '#f0ede8',
-        fontFamily: 'GeistMono_500Medium',
-        fontSize: 14,
+        color: colors.textPrimary,
+        fontFamily: font.medium,
+        fontSize: fontSize.md,
         textAlign: 'center',
     },
     inputUnit: {
-        fontFamily: 'GeistMono_400Regular',
-        fontSize: 12,
-        color: '#5a5754',
+        fontFamily: font.regular,
+        fontSize: fontSize.sm,
+        color: colors.textMuted,
     },
     resultBox: {
-        backgroundColor: '#161614',
-        borderRadius: 12,
+        backgroundColor: colors.bgSurface,
+        borderRadius: radius.md,
         padding: 20,
         alignItems: 'center',
-        marginBottom: 16,
+        marginBottom: spacing.lg,
     },
     resultLabel: {
-        fontFamily: 'GeistMono_400Regular',
-        fontSize: 10,
-        color: '#5a5754',
+        fontFamily: font.regular,
+        fontSize: fontSize.xs,
+        color: colors.textMuted,
         letterSpacing: 1.2,
         textTransform: 'uppercase',
-        marginBottom: 8,
+        marginBottom: spacing.sm,
     },
     resultValue: {
-        fontFamily: 'GeistMono_500Medium',
+        fontFamily: font.medium,
         fontSize: 36,
-        color: '#f0ede8',
+        color: colors.textPrimary,
         marginBottom: 6,
     },
     resultSub: {
-        fontFamily: 'GeistMono_400Regular',
-        fontSize: 10,
-        color: '#5a5754',
+        fontFamily: font.regular,
+        fontSize: fontSize.xs,
+        color: colors.textMuted,
     },
     btn: {
-        backgroundColor: '#e8410a',
+        backgroundColor: colors.accent,
         borderRadius: 10,
-        padding: 16,
+        padding: spacing.lg,
         alignItems: 'center',
-        marginBottom: 16,
+        marginBottom: spacing.lg,
     },
     btnDisabled: {
         opacity: 0.5,
     },
     btnText: {
-        fontFamily: 'GeistMono_500Medium',
-        fontSize: 14,
+        fontFamily: font.medium,
+        fontSize: fontSize.md,
         color: '#ffffff',
     },
     logoutBtn: {
-        padding: 16,
+        padding: spacing.lg,
         alignItems: 'center',
     },
     logoutText: {
-        fontFamily: 'GeistMono_400Regular',
+        fontFamily: font.regular,
         fontSize: 13,
-        color: '#5a5754',
+        color: colors.textMuted,
     },
     navBtn: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        backgroundColor: '#161614',
+        backgroundColor: colors.bgSurface,
         borderRadius: 10,
-        padding: 16,
+        padding: spacing.lg,
         marginBottom: 10,
     },
     navBtnText: {
-        fontFamily: 'GeistMono_400Regular',
+        fontFamily: font.regular,
         fontSize: 13,
-        color: '#f0ede8',
+        color: colors.textPrimary,
     },
     navBtnArrow: {
-        fontFamily: 'GeistMono_400Regular',
+        fontFamily: font.regular,
         fontSize: 18,
-        color: '#5a5754',
+        color: colors.textMuted,
     },
 });

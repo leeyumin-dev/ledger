@@ -7,6 +7,7 @@ import { AppHeader } from '../../src/components/AppHeader';
 import { AppTokenLabel } from '../../src/components/AppTokenLabel';
 import { isTokenKey } from '../../src/lib/screenTime';
 import { useSyncedAt } from '../../src/lib/SyncContext';
+import { colors, font, fontSize, spacing, radius } from '../../src/lib/theme';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 
@@ -133,7 +134,7 @@ export default function TrendsScreen() {
 
     const isLossApp = selected?.category === '소비';
     const isInvestApp = selected?.category === '투자';
-    const lineColor = isLossApp ? '#f87171' : '#4ade80';
+    const lineColor = isLossApp ? colors.loss : colors.profit;
     const goalMinutes = selected ? (goals[selected.app_name] ?? 0) : 0;
     const goalHours = goalMinutes / 60;
     const maxChartVal = Math.ceil(Math.max(...chartData.map(d => d.value), goalHours, 1) + 1);
@@ -150,7 +151,7 @@ export default function TrendsScreen() {
     const achieved = achievementPct !== null && (isLossApp ? achievementPct <= 100 : achievementPct >= 100);
 
     return (
-        <View style={{ flex: 1, backgroundColor: '#0f0f0f' }}>
+        <View style={{ flex: 1, backgroundColor: colors.bgBase }}>
             <AppHeader />
             <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
 
@@ -184,7 +185,7 @@ export default function TrendsScreen() {
                     <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.appScroll}>
                         {trends.map(t => {
                             const isSelected = selectedApp === t.app_name;
-                            const ringColor = t.category === '소비' ? '#f87171' : '#4ade80';
+                            const ringColor = t.category === '소비' ? colors.loss : colors.profit;
                             return (
                                 <TouchableOpacity
                                     key={t.app_name}
@@ -239,7 +240,7 @@ export default function TrendsScreen() {
                             {(isInvestApp || isLossApp) && goalMinutes > 0 ? (
                                 <View style={styles.statItem}>
                                     <Text style={styles.statLabel}>{isLossApp ? '이번 주 소비율' : '이번 주 달성률'}</Text>
-                                    <Text style={[styles.statVal, { color: achieved ? '#4ade80' : '#f87171' }]}>
+                                    <Text style={[styles.statVal, { color: achieved ? colors.profit : colors.loss }]}>
                                         {achievementPct}%
                                     </Text>
                                 </View>
@@ -262,7 +263,7 @@ export default function TrendsScreen() {
                         ]}>
                             <Text style={[styles.goalBadgeIcon]}>{achieved ? '🏆' : (isLossApp ? '⚠️' : '🎯')}</Text>
                             <View style={{ flex: 1 }}>
-                                <Text style={[styles.goalBadgeTitle, { color: achieved ? '#4ade80' : (isLossApp ? '#f87171' : '#f0ede8') }]}>
+                                <Text style={[styles.goalBadgeTitle, { color: achieved ? colors.profit : (isLossApp ? colors.loss : colors.textPrimary) }]}>
                                     {achieved
                                         ? (isLossApp ? '이번 주 한도 달성!' : '이번 주 목표 달성!')
                                         : (isLossApp ? '이번 주 한도 초과' : '이번 주 목표 진행 중')}
@@ -272,7 +273,7 @@ export default function TrendsScreen() {
                                 </Text>
                             </View>
                             {achievementPct !== null && (
-                                <Text style={[styles.goalBadgePct, { color: achieved ? '#4ade80' : (isLossApp ? '#f87171' : '#9a9690') }]}>
+                                <Text style={[styles.goalBadgePct, { color: achieved ? colors.profit : (isLossApp ? colors.loss : colors.textSecondary) }]}>
                                     {achievementPct}%
                                 </Text>
                             )}
@@ -284,7 +285,7 @@ export default function TrendsScreen() {
                         <View style={styles.chartBox}>
                             <View style={styles.chartHeader}>
                                 {isTokenKey(selected.app_name) ? (
-                                    <AppTokenLabel key={selected.app_name} tokenKey={selected.app_name} color="#f0ede8" fontSize={14} style={{ flex: 1, height: 22 }} />
+                                    <AppTokenLabel key={selected.app_name} tokenKey={selected.app_name} color={colors.textPrimary} fontSize={14} style={{ flex: 1, height: 22 }} />
                                 ) : (
                                     <Text style={styles.chartTitle}>{selected.app_name}</Text>
                                 )}
@@ -310,14 +311,14 @@ export default function TrendsScreen() {
                                 endOpacity={0.02}
                                 areaChart
                                 hideRules
-                                xAxisColor="#2a2826"
-                                yAxisColor="#2a2826"
-                                yAxisTextStyle={{ color: '#5a5754', fontSize: 10, fontFamily: 'GeistMono_400Regular' }}
-                                xAxisLabelTextStyle={{ color: '#5a5754', fontSize: 9, fontFamily: 'GeistMono_400Regular' }}
+                                xAxisColor={colors.border}
+                                yAxisColor={colors.border}
+                                yAxisTextStyle={{ color: colors.textMuted, fontSize: fontSize.xs, fontFamily: font.regular }}
+                                xAxisLabelTextStyle={{ color: colors.textMuted, fontSize: 9, fontFamily: font.regular }}
                                 noOfSections={4}
                                 maxValue={maxChartVal}
                                 roundToDigits={1}
-                                backgroundColor="#161614"
+                                backgroundColor={colors.bgSurface}
                                 textColor={lineColor}
                                 textFontSize={10}
                                 showReferenceLine1={goalMinutes > 0}
@@ -344,7 +345,7 @@ export default function TrendsScreen() {
                                 isInvestApp ? d.minutes >= goalMinutes : d.minutes <= goalMinutes
                             );
                             return (
-                                <View key={d.week} style={[styles.weekRow, i === 0 && { borderTopWidth: 0.5, borderTopColor: '#1c1c1a' }]}>
+                                <View key={d.week} style={[styles.weekRow, i === 0 && { borderTopWidth: 0.5, borderTopColor: colors.bgRaised }]}>
                                     <Text style={styles.weekLabel}>{d.week}</Text>
                                     <View style={styles.weekBarBg}>
                                         <View style={[styles.weekBar, { width: `${barPct}%` as any, backgroundColor: lineColor }]} />
@@ -370,89 +371,87 @@ export default function TrendsScreen() {
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#0f0f0f', paddingHorizontal: 24 },
-    rangeRow: { flexDirection: 'row', alignItems: 'center', paddingTop: 16, paddingBottom: 12, gap: 12 },
-    rangeLabel: { fontFamily: 'GeistMono_400Regular', fontSize: 10, color: '#5a5754', letterSpacing: 1 },
-    rangeGroup: { flexDirection: 'row', backgroundColor: '#1c1c1a', borderRadius: 10, padding: 3, gap: 2, flex: 1 },
-    rangeBtn: { flex: 1, paddingVertical: 7, borderRadius: 8, alignItems: 'center' },
-    rangeBtnActive: { backgroundColor: '#e8410a' },
-    rangeBtnText: { fontFamily: 'GeistMono_400Regular', fontSize: 12, color: '#5a5754' },
+    container: { flex: 1, backgroundColor: colors.bgBase, paddingHorizontal: spacing.lg },
+    rangeRow: { flexDirection: 'row', alignItems: 'center', paddingTop: spacing.md, paddingBottom: spacing.sm, gap: spacing.sm },
+    rangeLabel: { fontFamily: font.regular, fontSize: fontSize.xs, color: colors.textMuted, letterSpacing: 1 },
+    rangeGroup: { flexDirection: 'row', backgroundColor: colors.bgRaised, borderRadius: radius.md, padding: 3, gap: 2, flex: 1 },
+    rangeBtn: { flex: 1, paddingVertical: 7, borderRadius: radius.sm, alignItems: 'center' },
+    rangeBtnActive: { backgroundColor: colors.accent },
+    rangeBtnText: { fontFamily: font.regular, fontSize: fontSize.sm, color: colors.textMuted },
     rangeBtnTextActive: { color: '#ffffff' },
-    sectionLabel: { fontFamily: 'GeistMono_400Regular', fontSize: 10, color: '#5a5754', letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 12 },
-    appScroll: { marginBottom: 16 },
-    // 토큰키 앱: 아이콘만, 텍스트 앱: 기존 박스
+    sectionLabel: { fontFamily: font.regular, fontSize: fontSize.xs, color: colors.textMuted, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: spacing.sm },
+    appScroll: { marginBottom: spacing.md },
     appIconBtn: { marginRight: 10, alignItems: 'center', justifyContent: 'center' },
     appIconWrap: {
-        width: 40, height: 40, borderRadius: 12,
-        backgroundColor: '#1c1c1a',
+        width: 40, height: 40, borderRadius: radius.md,
+        backgroundColor: colors.bgRaised,
         alignItems: 'center', justifyContent: 'center',
         borderWidth: 0, borderColor: 'transparent',
         overflow: 'hidden',
     },
-    appTextBtn: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, borderWidth: 1, borderColor: '#2a2826', alignItems: 'center', minWidth: 60 },
-    appBtnLoss: { backgroundColor: 'rgba(248,113,113,0.1)', borderColor: 'rgba(248,113,113,0.3)' },
-    appBtnInvest: { backgroundColor: 'rgba(74,222,128,0.1)', borderColor: 'rgba(74,222,128,0.3)' },
-    appBtnText: { fontFamily: 'GeistMono_500Medium', fontSize: 12, color: '#5a5754' },
+    appTextBtn: { paddingHorizontal: 12, paddingVertical: spacing.sm, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, alignItems: 'center', minWidth: 60 },
+    appBtnLoss: { backgroundColor: colors.lossBg, borderColor: colors.lossBorder },
+    appBtnInvest: { backgroundColor: colors.profitBg, borderColor: colors.profitBorder },
+    appBtnText: { fontFamily: font.medium, fontSize: fontSize.sm, color: colors.textMuted },
     appBtnTextActive: { color: '#ffffff' },
-    appBtnSub: { fontFamily: 'GeistMono_400Regular', fontSize: 9, color: '#5a5754', marginTop: 2 },
-    statRow: { flexDirection: 'row', backgroundColor: '#161614', borderRadius: 12, marginBottom: 16, overflow: 'hidden' },
+    appBtnSub: { fontFamily: font.regular, fontSize: fontSize.xs, color: colors.textMuted, marginTop: 2 },
+    statRow: { flexDirection: 'row', backgroundColor: colors.bgSurface, borderRadius: radius.md, marginBottom: spacing.md, overflow: 'hidden' },
     statItem: { flex: 1, padding: 14, alignItems: 'center' },
-    statDivider: { width: 0.5, backgroundColor: '#2a2826', marginVertical: 10 },
-    statLabel: { fontFamily: 'GeistMono_400Regular', fontSize: 9, color: '#5a5754', marginBottom: 6, letterSpacing: 0.5 },
-    statVal: { fontFamily: 'GeistMono_500Medium', fontSize: 14 },
+    statDivider: { width: 0.5, backgroundColor: colors.border, marginVertical: 10 },
+    statLabel: { fontFamily: font.regular, fontSize: fontSize.xs, color: colors.textMuted, marginBottom: 6, letterSpacing: 0.5 },
+    statVal: { fontFamily: font.medium, fontSize: fontSize.md },
     goalBadge: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 12,
-        borderRadius: 12,
+        gap: spacing.sm,
+        borderRadius: radius.md,
         padding: 14,
-        marginBottom: 16,
+        marginBottom: spacing.md,
         borderWidth: 1,
     },
     goalBadgeAchieved: {
-        backgroundColor: 'rgba(74,222,128,0.08)',
-        borderColor: 'rgba(74,222,128,0.25)',
+        backgroundColor: colors.profitBg,
+        borderColor: colors.profitBorder,
     },
     goalBadgePending: {
-        backgroundColor: '#161614',
-        borderColor: '#2a2826',
+        backgroundColor: colors.bgSurface,
+        borderColor: colors.border,
     },
     goalBadgeWarning: {
-        backgroundColor: 'rgba(248,113,113,0.06)',
-        borderColor: 'rgba(248,113,113,0.2)',
+        backgroundColor: colors.lossBg,
+        borderColor: colors.lossBorder,
     },
     goalBadgeIcon: { fontSize: 20 },
     goalBadgeTitle: {
-        fontFamily: 'GeistMono_500Medium',
+        fontFamily: font.medium,
         fontSize: 13,
         marginBottom: 3,
     },
     goalBadgeSub: {
-        fontFamily: 'GeistMono_400Regular',
-        fontSize: 11,
-        color: '#5a5754',
+        fontFamily: font.regular,
+        fontSize: fontSize.xs,
+        color: colors.textMuted,
     },
     goalBadgePct: {
-        fontFamily: 'GeistMono_700Bold',
+        fontFamily: font.bold,
         fontSize: 18,
     },
-    chartBox: { backgroundColor: '#161614', borderRadius: 12, padding: 16, marginBottom: 8 },
+    chartBox: { backgroundColor: colors.bgSurface, borderRadius: radius.md, padding: spacing.md, marginBottom: spacing.sm },
     chartHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
-    chartTitle: { fontFamily: 'GeistMono_500Medium', fontSize: 14, color: '#f0ede8' },
-    chartSub: { fontFamily: 'GeistMono_400Regular', fontSize: 10, color: '#5a5754' },
+    chartTitle: { fontFamily: font.medium, fontSize: fontSize.md, color: colors.textPrimary },
+    chartSub: { fontFamily: font.regular, fontSize: fontSize.xs, color: colors.textMuted },
     goalChipText: {
-        fontFamily: 'GeistMono_400Regular',
-        fontSize: 10,
-        color: 'rgba(74,222,128,0.6)',
+        fontFamily: font.regular,
+        fontSize: fontSize.xs,
     },
-    weekList: { borderRadius: 12, overflow: 'hidden', marginBottom: 8 },
-    weekRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, borderBottomWidth: 0.5, borderBottomColor: '#1c1c1a' },
-    weekLabel: { fontFamily: 'GeistMono_400Regular', fontSize: 11, color: '#5a5754', width: 52 },
-    weekBarBg: { flex: 1, height: 4, backgroundColor: '#2a2826', borderRadius: 2 },
+    weekList: { borderRadius: radius.md, overflow: 'hidden', marginBottom: spacing.sm },
+    weekRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, borderBottomWidth: 0.5, borderBottomColor: colors.bgRaised },
+    weekLabel: { fontFamily: font.regular, fontSize: 11, color: colors.textMuted, width: 52 },
+    weekBarBg: { flex: 1, height: 4, backgroundColor: colors.border, borderRadius: 2 },
     weekBar: { height: 4, borderRadius: 2 },
-    weekVal: { fontFamily: 'GeistMono_500Medium', fontSize: 11, width: 64, textAlign: 'right' },
-    weekAchieved: { fontFamily: 'GeistMono_500Medium', fontSize: 12, color: '#4ade80', width: 16 },
+    weekVal: { fontFamily: font.medium, fontSize: 11, width: 64, textAlign: 'right' },
+    weekAchieved: { fontFamily: font.medium, fontSize: fontSize.sm, color: colors.profit, width: 16 },
     emptyBox: { paddingVertical: 48, alignItems: 'center' },
-    emptyText: { fontFamily: 'GeistMono_500Medium', fontSize: 14, color: '#5a5754', marginBottom: 8 },
-    emptySub: { fontFamily: 'GeistMono_400Regular', fontSize: 12, color: '#3a3836', textAlign: 'center' },
+    emptyText: { fontFamily: font.medium, fontSize: fontSize.md, color: colors.textMuted, marginBottom: spacing.sm },
+    emptySub: { fontFamily: font.regular, fontSize: fontSize.sm, color: colors.textDisabled, textAlign: 'center' },
 });

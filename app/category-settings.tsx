@@ -7,6 +7,7 @@ import {
 import { useFocusEffect } from 'expo-router';
 import { supabase } from '../src/lib/supabase';
 import { DEFAULT_APPS } from '../src/lib/defaultApps';
+import { colors, font, fontSize, spacing, radius } from '../src/lib/theme';
 
 type AppCategory = {
     id: string;
@@ -179,7 +180,7 @@ export default function CategorySettingsScreen() {
     }
 
     return (
-        <View style={{ flex: 1, backgroundColor: '#0f0f0f' }}>
+        <View style={{ flex: 1, backgroundColor: colors.bgBase }}>
             <ScrollView
                 style={styles.container}
                 keyboardShouldPersistTaps="handled"
@@ -197,7 +198,7 @@ export default function CategorySettingsScreen() {
 
                 {loading ? (
                     <View style={{ paddingVertical: 48, alignItems: 'center' }}>
-                        <ActivityIndicator color="#e8410a" />
+                        <ActivityIndicator color={colors.accent} />
                     </View>
                 ) : null}
 
@@ -296,7 +297,7 @@ export default function CategorySettingsScreen() {
                                                     onChangeText={setCustomInputVal}
                                                     keyboardType="number-pad"
                                                     placeholder="분 입력"
-                                                    placeholderTextColor="#5a5754"
+                                                    placeholderTextColor={colors.textMuted}
                                                     autoFocus
                                                 />
                                                 <Text style={styles.customInputUnit}>분</Text>
@@ -314,7 +315,7 @@ export default function CategorySettingsScreen() {
                                 {/* 소비: 주간 한도 */}
                                 {item.category === '소비' && (
                                     <View style={styles.settingRow}>
-                                        <Text style={[styles.settingLabel, { color: '#f87171' }]}>주간 한도</Text>
+                                        <Text style={[styles.settingLabel, { color: colors.loss }]}>주간 한도</Text>
                                         <View style={styles.presetBtns}>
                                             {PRESET_LIMITS.map(min => (
                                                 <TouchableOpacity
@@ -357,17 +358,17 @@ export default function CategorySettingsScreen() {
                                         {goalInputId === item.id && item.category === '소비' && (
                                             <View style={styles.customInputRow}>
                                                 <TextInput
-                                                    style={[styles.customInput, { borderColor: '#f87171' }]}
+                                                    style={[styles.customInput, { borderColor: colors.loss }]}
                                                     value={goalInputVal}
                                                     onChangeText={setGoalInputVal}
                                                     keyboardType="number-pad"
                                                     placeholder="분 입력"
-                                                    placeholderTextColor="#5a5754"
+                                                    placeholderTextColor={colors.textMuted}
                                                     autoFocus
                                                 />
                                                 <Text style={styles.customInputUnit}>분/주</Text>
-                                                <TouchableOpacity style={[styles.customConfirmBtn, { backgroundColor: '#f87171' }]} onPress={() => confirmCustomGoal(item.id)}>
-                                                    <Text style={[styles.customConfirmText, { color: '#0f0f0f' }]}>확인</Text>
+                                                <TouchableOpacity style={[styles.customConfirmBtn, { backgroundColor: colors.loss }]} onPress={() => confirmCustomGoal(item.id)}>
+                                                    <Text style={[styles.customConfirmText, { color: colors.bgBase }]}>확인</Text>
                                                 </TouchableOpacity>
                                                 <TouchableOpacity style={styles.customCancelBtn} onPress={() => { setGoalInputId(null); setGoalInputVal(''); }}>
                                                     <Text style={styles.customCancelText}>취소</Text>
@@ -380,7 +381,7 @@ export default function CategorySettingsScreen() {
                                 {/* 투자: 주간 목표 */}
                                 {item.category === '투자' && (
                                     <View style={styles.settingRow}>
-                                        <Text style={[styles.settingLabel, { color: '#4ade80' }]}>주간 목표</Text>
+                                        <Text style={[styles.settingLabel, { color: colors.profit }]}>주간 목표</Text>
                                         <View style={styles.presetBtns}>
                                             {PRESET_GOALS.map(min => (
                                                 <TouchableOpacity
@@ -423,17 +424,17 @@ export default function CategorySettingsScreen() {
                                         {goalInputId === item.id && (
                                             <View style={styles.customInputRow}>
                                                 <TextInput
-                                                    style={[styles.customInput, { borderColor: '#4ade80' }]}
+                                                    style={[styles.customInput, { borderColor: colors.profit }]}
                                                     value={goalInputVal}
                                                     onChangeText={setGoalInputVal}
                                                     keyboardType="number-pad"
                                                     placeholder="분 입력"
-                                                    placeholderTextColor="#5a5754"
+                                                    placeholderTextColor={colors.textMuted}
                                                     autoFocus
                                                 />
                                                 <Text style={styles.customInputUnit}>분/주</Text>
-                                                <TouchableOpacity style={[styles.customConfirmBtn, { backgroundColor: '#4ade80' }]} onPress={() => confirmCustomGoal(item.id)}>
-                                                    <Text style={[styles.customConfirmText, { color: '#0f0f0f' }]}>확인</Text>
+                                                <TouchableOpacity style={[styles.customConfirmBtn, { backgroundColor: colors.profit }]} onPress={() => confirmCustomGoal(item.id)}>
+                                                    <Text style={[styles.customConfirmText, { color: colors.bgBase }]}>확인</Text>
                                                 </TouchableOpacity>
                                                 <TouchableOpacity style={styles.customCancelBtn} onPress={() => { setGoalInputId(null); setGoalInputVal(''); }}>
                                                     <Text style={styles.customCancelText}>취소</Text>
@@ -498,7 +499,7 @@ export default function CategorySettingsScreen() {
                                 <TextInput
                                     style={styles.modalInput}
                                     placeholder="앱 이름 (예: 유튜브)"
-                                    placeholderTextColor="#5a5754"
+                                    placeholderTextColor={colors.textMuted}
                                     value={newAppName}
                                     onChangeText={setNewAppName}
                                     autoFocus
@@ -534,59 +535,59 @@ export default function CategorySettingsScreen() {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#0f0f0f',
-        paddingHorizontal: 24,
+        backgroundColor: colors.bgBase,
+        paddingHorizontal: spacing.lg,
     },
     header: {
         paddingTop: 72,
-        paddingBottom: 24,
+        paddingBottom: spacing.lg,
     },
     headerSub: {
-        fontFamily: 'GeistMono_400Regular',
-        fontSize: 11,
-        color: '#5a5754',
+        fontFamily: font.regular,
+        fontSize: fontSize.xs,
+        color: colors.textMuted,
         letterSpacing: 1,
         marginBottom: 6,
     },
     headerTitle: {
-        fontFamily: 'GeistMono_500Medium',
-        fontSize: 28,
-        color: '#f0ede8',
+        fontFamily: font.medium,
+        fontSize: fontSize.xl,
+        color: colors.textPrimary,
         letterSpacing: -0.5,
     },
     thickDivider: {
         height: 1.5,
-        backgroundColor: '#3a3836',
-        marginVertical: 12,
+        backgroundColor: colors.textDisabled,
+        marginVertical: spacing.sm,
     },
     hint: {
-        fontFamily: 'GeistMono_400Regular',
-        fontSize: 12,
-        color: '#5a5754',
+        fontFamily: font.regular,
+        fontSize: fontSize.sm,
+        color: colors.textMuted,
         lineHeight: 20,
-        marginBottom: 24,
+        marginBottom: spacing.lg,
     },
     section: {
-        marginBottom: 24,
+        marginBottom: spacing.lg,
     },
     sectionLabel: {
-        fontFamily: 'GeistMono_400Regular',
-        fontSize: 10,
-        color: '#5a5754',
+        fontFamily: font.regular,
+        fontSize: fontSize.xs,
+        color: colors.textMuted,
         letterSpacing: 1.5,
         textTransform: 'uppercase',
         marginBottom: 10,
     },
     item: {
-        backgroundColor: '#161614',
-        borderRadius: 10,
+        backgroundColor: colors.bgSurface,
+        borderRadius: radius.md,
         padding: 14,
-        marginBottom: 8,
+        marginBottom: spacing.sm,
     },
     itemName: {
-        fontFamily: 'GeistMono_500Medium',
-        fontSize: 14,
-        color: '#f0ede8',
+        fontFamily: font.medium,
+        fontSize: fontSize.md,
+        color: colors.textPrimary,
         marginBottom: 10,
     },
     itemTop: {
@@ -596,19 +597,19 @@ const styles = StyleSheet.create({
         marginBottom: 10,
     },
     itemBadge: {
-        fontFamily: 'GeistMono_400Regular',
-        fontSize: 11,
-        color: '#e8410a',
+        fontFamily: font.regular,
+        fontSize: fontSize.xs,
+        color: colors.accent,
     },
     itemBadgeGoal: {
-        color: '#4ade80',
+        color: colors.profit,
     },
     itemBadgeLimit: {
-        color: '#f87171',
+        color: colors.loss,
     },
     itemBadgeSaved: {
         color: '#39FF14',
-        fontFamily: 'GeistMono_500Medium',
+        fontFamily: font.medium,
     },
     catBtnRow: {
         flexDirection: 'row',
@@ -616,24 +617,24 @@ const styles = StyleSheet.create({
     },
     catRow: {
         flexDirection: 'row',
-        gap: 8,
-        marginBottom: 16,
+        gap: spacing.sm,
+        marginBottom: spacing.md,
     },
     catBtn: {
         paddingHorizontal: 12,
         paddingVertical: 6,
         borderRadius: 20,
         borderWidth: 1,
-        borderColor: '#2a2826',
+        borderColor: colors.border,
     },
     catBtnActive: {
-        backgroundColor: '#e8410a',
-        borderColor: '#e8410a',
+        backgroundColor: colors.accent,
+        borderColor: colors.accent,
     },
     catBtnText: {
-        fontFamily: 'GeistMono_400Regular',
-        fontSize: 11,
-        color: '#5a5754',
+        fontFamily: font.regular,
+        fontSize: fontSize.xs,
+        color: colors.textMuted,
     },
     catBtnTextActive: {
         color: '#ffffff',
@@ -641,16 +642,16 @@ const styles = StyleSheet.create({
     settingRow: {
         marginTop: 10,
         borderTopWidth: 0.5,
-        borderTopColor: '#2a2826',
+        borderTopColor: colors.border,
         paddingTop: 10,
     },
     settingLabel: {
-        fontFamily: 'GeistMono_400Regular',
-        fontSize: 10,
-        color: '#5a5754',
+        fontFamily: font.regular,
+        fontSize: fontSize.xs,
+        color: colors.textMuted,
         letterSpacing: 1,
         textTransform: 'uppercase',
-        marginBottom: 8,
+        marginBottom: spacing.sm,
     },
     presetBtns: {
         flexDirection: 'row',
@@ -662,39 +663,39 @@ const styles = StyleSheet.create({
         paddingVertical: 6,
         borderRadius: 20,
         borderWidth: 1,
-        borderColor: '#2a2826',
+        borderColor: colors.border,
     },
     presetBtnGoal: {
-        borderColor: '#1a3320',
+        borderColor: colors.profitBorder,
     },
     presetBtnLimit: {
-        borderColor: '#3a1a1a',
+        borderColor: colors.lossBorder,
     },
     presetBtnActive: {
-        backgroundColor: '#161614',
-        borderColor: '#e8410a',
+        backgroundColor: colors.bgSurface,
+        borderColor: colors.accent,
     },
     presetBtnGoalActive: {
-        backgroundColor: '#0f2018',
-        borderColor: '#4ade80',
+        backgroundColor: colors.profitBg,
+        borderColor: colors.profit,
     },
     presetBtnLimitActive: {
-        backgroundColor: '#200f0f',
-        borderColor: '#f87171',
+        backgroundColor: colors.lossBg,
+        borderColor: colors.loss,
     },
     presetBtnText: {
-        fontFamily: 'GeistMono_400Regular',
-        fontSize: 11,
-        color: '#5a5754',
+        fontFamily: font.regular,
+        fontSize: fontSize.xs,
+        color: colors.textMuted,
     },
     presetBtnTextActive: {
-        color: '#e8410a',
+        color: colors.accent,
     },
     presetBtnGoalTextActive: {
-        color: '#4ade80',
+        color: colors.profit,
     },
     presetBtnLimitTextActive: {
-        color: '#f87171',
+        color: colors.loss,
     },
     customInputRow: {
         flexDirection: 'row',
@@ -704,62 +705,62 @@ const styles = StyleSheet.create({
     },
     customInput: {
         flex: 1,
-        backgroundColor: '#0f0f0f',
+        backgroundColor: colors.bgBase,
         borderWidth: 1,
-        borderColor: '#e8410a',
-        borderRadius: 8,
+        borderColor: colors.accent,
+        borderRadius: radius.sm,
         paddingHorizontal: 12,
-        paddingVertical: 8,
-        color: '#f0ede8',
-        fontFamily: 'GeistMono_500Medium',
-        fontSize: 14,
+        paddingVertical: spacing.sm,
+        color: colors.textPrimary,
+        fontFamily: font.medium,
+        fontSize: fontSize.md,
     },
     customInputUnit: {
-        fontFamily: 'GeistMono_400Regular',
-        fontSize: 12,
-        color: '#5a5754',
+        fontFamily: font.regular,
+        fontSize: fontSize.sm,
+        color: colors.textMuted,
     },
     customConfirmBtn: {
-        backgroundColor: '#e8410a',
-        borderRadius: 8,
+        backgroundColor: colors.accent,
+        borderRadius: radius.sm,
         paddingHorizontal: 12,
-        paddingVertical: 8,
+        paddingVertical: spacing.sm,
     },
     customConfirmText: {
-        fontFamily: 'GeistMono_500Medium',
-        fontSize: 12,
+        fontFamily: font.medium,
+        fontSize: fontSize.sm,
         color: '#fff',
     },
     customCancelBtn: {
         paddingHorizontal: 10,
-        paddingVertical: 8,
+        paddingVertical: spacing.sm,
     },
     customCancelText: {
-        fontFamily: 'GeistMono_400Regular',
-        fontSize: 12,
-        color: '#5a5754',
+        fontFamily: font.regular,
+        fontSize: fontSize.sm,
+        color: colors.textMuted,
     },
     emptyText: {
-        fontFamily: 'GeistMono_400Regular',
-        fontSize: 12,
-        color: '#3a3836',
-        paddingVertical: 8,
+        fontFamily: font.regular,
+        fontSize: fontSize.sm,
+        color: colors.textDisabled,
+        paddingVertical: spacing.sm,
     },
     longPressHint: {
-        fontFamily: 'GeistMono_400Regular',
-        fontSize: 10,
-        color: '#3a3836',
+        fontFamily: font.regular,
+        fontSize: fontSize.xs,
+        color: colors.textDisabled,
         textAlign: 'center',
-        marginTop: 8,
+        marginTop: spacing.sm,
     },
     fab: {
         position: 'absolute',
         bottom: 32,
-        right: 24,
+        right: spacing.lg,
         width: 52,
         height: 52,
         borderRadius: 26,
-        backgroundColor: '#e8410a',
+        backgroundColor: colors.accent,
         justifyContent: 'center',
         alignItems: 'center',
     },
@@ -774,56 +775,56 @@ const styles = StyleSheet.create({
         justifyContent: 'flex-end',
     },
     modalBox: {
-        backgroundColor: '#161614',
-        borderTopLeftRadius: 20,
-        borderTopRightRadius: 20,
-        padding: 24,
+        backgroundColor: colors.bgSurface,
+        borderTopLeftRadius: radius.xl,
+        borderTopRightRadius: radius.xl,
+        padding: spacing.lg,
     },
     modalTitle: {
-        fontFamily: 'GeistMono_500Medium',
-        fontSize: 16,
-        color: '#f0ede8',
-        marginBottom: 16,
+        fontFamily: font.medium,
+        fontSize: fontSize.lg,
+        color: colors.textPrimary,
+        marginBottom: spacing.md,
     },
     modalInput: {
-        backgroundColor: '#0f0f0f',
+        backgroundColor: colors.bgBase,
         borderWidth: 1,
-        borderColor: '#2a2826',
-        borderRadius: 10,
+        borderColor: colors.border,
+        borderRadius: radius.md,
         padding: 14,
-        color: '#f0ede8',
-        fontFamily: 'GeistMono_400Regular',
-        fontSize: 14,
-        marginBottom: 12,
+        color: colors.textPrimary,
+        fontFamily: font.regular,
+        fontSize: fontSize.md,
+        marginBottom: spacing.sm,
     },
     modalSubmitBtn: {
-        backgroundColor: '#e8410a',
-        borderRadius: 10,
-        padding: 16,
+        backgroundColor: colors.accent,
+        borderRadius: radius.md,
+        padding: spacing.md,
         alignItems: 'center',
-        marginBottom: 8,
+        marginBottom: spacing.sm,
     },
     modalSubmitText: {
-        fontFamily: 'GeistMono_500Medium',
-        fontSize: 14,
+        fontFamily: font.medium,
+        fontSize: fontSize.md,
         color: '#ffffff',
     },
     modalCancelBtn: {
-        padding: 12,
+        padding: spacing.sm,
         alignItems: 'center',
     },
     modalCancelText: {
-        fontFamily: 'GeistMono_400Regular',
+        fontFamily: font.regular,
         fontSize: 13,
-        color: '#5a5754',
+        color: colors.textMuted,
     },
     quickLabel: {
-        fontFamily: 'GeistMono_400Regular',
-        fontSize: 10,
-        color: '#5a5754',
+        fontFamily: font.regular,
+        fontSize: fontSize.xs,
+        color: colors.textMuted,
         letterSpacing: 1.2,
         textTransform: 'uppercase',
-        marginBottom: 8,
+        marginBottom: spacing.sm,
     },
     quickRow: {
         flexDirection: 'row',
@@ -835,20 +836,20 @@ const styles = StyleSheet.create({
         paddingVertical: 7,
         borderRadius: 20,
         borderWidth: 1,
-        borderColor: '#2a2826',
-        backgroundColor: '#0f0f0f',
+        borderColor: colors.border,
+        backgroundColor: colors.bgBase,
     },
     defaultAppBtnRegistered: {
-        borderColor: '#3a3836',
-        backgroundColor: '#0f0f0f',
+        borderColor: colors.textDisabled,
+        backgroundColor: colors.bgBase,
         opacity: 0.4,
     },
     defaultAppBtnText: {
-        fontFamily: 'GeistMono_400Regular',
-        fontSize: 12,
-        color: '#9a9690',
+        fontFamily: font.regular,
+        fontSize: fontSize.sm,
+        color: colors.textSecondary,
     },
     defaultAppBtnTextRegistered: {
-        color: '#5a5754',
+        color: colors.textMuted,
     },
 });
