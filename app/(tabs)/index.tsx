@@ -41,7 +41,6 @@ function fmt(m: number) {
 
 export default function TodayScreen() {
     const params = useLocalSearchParams<{ date?: string }>();
-    // 선택된 날짜가 있으면 사용, 없으면 오늘 날짜 사용
     const targetDate = params.date || toLocalDateStr();
     
     const [sleepHours, setSleepHours] = useState(7.5);
@@ -59,7 +58,6 @@ export default function TodayScreen() {
     const sync = useSync();
     const isFocused = useRef(false);
 
-    // 날짜 레이블 생성
     const dateObj = new Date(targetDate + 'T00:00:00');
     const dateLabel = dateObj.toLocaleDateString('ko-KR', {
         month: 'short', day: 'numeric', weekday: 'short'
@@ -113,18 +111,14 @@ export default function TodayScreen() {
             setPrevNetMinutes(null);
         }
 
-        const usageData = usageRes.data ?? [];
-        const categoryData = categoryRes.data ?? [];
+        setUsageList(usageRes.data ?? []);
 
-        setUsageList(usageData);
-
-        const warnings = categoryData
+        const warnings = (categoryRes.data ?? [])
             .filter(c => c.budget_minutes > 0)
             .map(c => {
-                const usage = usageData.find(u => u.app_name === c.app_name);
+                const usage = (usageRes.data ?? []).find(u => u.app_name === c.app_name);
                 const used = usage ? usage.duration_minutes : 0;
-                const ratio = used / c.budget_minutes;
-                return { app_name: c.app_name, ratio, used_minutes: used, budget_minutes: c.budget_minutes };
+                return { app_name: c.app_name, ratio: used / c.budget_minutes, used_minutes: used, budget_minutes: c.budget_minutes };
             })
             .filter(w => w.ratio >= 0.8)
             .sort((a, b) => b.ratio - a.ratio);
@@ -136,16 +130,10 @@ export default function TodayScreen() {
         if (!newAppName || !newMinutes) return;
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return;
-
         const addMinutes = parseInt(newMinutes);
         const { data: existing } = await supabase.from('app_usage').select('id, duration_minutes').eq('user_id', user.id).eq('date', targetDate).eq('app_name', newAppName).single();
-
-        if (existing) {
-            await supabase.from('app_usage').update({ duration_minutes: existing.duration_minutes + addMinutes }).eq('id', existing.id);
-        } else {
-            await supabase.from('app_usage').insert({ user_id: user.id, date: targetDate, app_name: newAppName, duration_minutes: addMinutes, category: newCategory });
-        }
-
+        if (existing) await supabase.from('app_usage').update({ duration_minutes: existing.duration_minutes + addMinutes }).eq('id', existing.id);
+        else await supabase.from('app_usage').insert({ user_id: user.id, date: targetDate, app_name: newAppName, duration_minutes: addMinutes, category: newCategory });
         setNewAppName(''); setNewMinutes(''); setModalVisible(false);
         await loadData();
     }
@@ -180,10 +168,7 @@ export default function TodayScreen() {
                 <View style={styles.header}>
                     <View style={styles.headerTopRow}>
                         <Text style={styles.dateLabel}>{dateLabel}</Text>
-                        {isToday && syncedAt > 0 && (
-                            <Text style={styles.syncedLabel}>방금 동기화됨</Text>
-                        )}
-                        {!isToday && (
+                        {isToday ? (syncedAt > 0 && <Text style={styles.syncedLabel}>방금 동기화됨</Text>) : (
                             <TouchableOpacity onPress={() => router.setParams({ date: undefined })}>
                                 <Text style={[styles.syncedLabel, { color: colors.accent }]}>오늘로 돌아가기</Text>
                             </TouchableOpacity>
@@ -204,6 +189,7 @@ export default function TodayScreen() {
                     </TouchableOpacity>
                 )}
 
+                {/* 메인 순손익 카드 */}
                 <View style={styles.heroCard}>
                     <Text style={styles.heroLabel}>당기 순손익</Text>
                     <View style={styles.heroValueGroup}>
@@ -221,41 +207,80 @@ export default function TodayScreen() {
                     </View>
                 </View>
 
-                <View style={styles.section}>
-                    <SectionHeader title="시간 수입" />
-                    <StatementRow label="하루 가용 시간" value="24h 00m" sm muted />
-                    <StatementRow label="고정 비용 (수면/업무)" value={`－ ${(sleepHours + workHours).toFixed(1)}h`} sm muted />
-                    <StatementRow label="가처분 시간 합계" value={`${disposable.toFixed(1)}h`} sm muted />
+                {/* 1. 시간 수입 섹션 (계층화 리뉴얼) */}
+                <View style={styles.sectionContainer}>
+                    <Text style={styles.sectionHeaderLabel}>기초 시간 자산 (공급)</Text>
+                    <View style={[styles.ledgerCard, { borderLeftColor: colors.textDisabled }]}>
+                        <StatementRow label="하루 가용 시간" value="24h 00m" muted />
+                        
+                        <View style={styles.subGroup}>
+                            <Text style={styles.subGroupLabel}>고정 비용 차감</Text>
+                            <View style={styles.subItemRow}>
+                                <Text style={styles.subItemLabel}>• 수면 시간</Text>
+                                <Text style={styles.subItemValue}>－ {sleepHours.toFixed(1)}h</Text>
+                            </View>
+                            <View style={styles.subItemRow}>
+                                <Text style={styles.subItemLabel}>• 업무 시간</Text>
+                                <Text style={styles.subItemValue}>－ {workHours.toFixed(1)}h</Text>
+                            </View>
+                        </View>
+
+                        <View style={styles.ledgerDivider} />
+                        <StatementRow label="가처분 시간 합계" value={`${disposable.toFixed(1)}h`} isTotal isLast />
+                    </View>
                 </View>
 
-                <View style={styles.section}>
-                    <SectionHeader title="시간 지출 (소비)" />
-                    {usageList.filter(u => u.category === '소비').map(u => (
-                        <TouchableOpacity key={u.id} onLongPress={() => deleteUsage(u.id)} activeOpacity={0.7}>
-                            <StatementRow label={u.app_name} value={fmt(u.duration_minutes)} loss auto={u.source === 'auto'} />
-                        </TouchableOpacity>
-                    ))}
-                    {usageList.filter(u => u.category === '소비').length === 0 && <Text style={styles.emptyText}>지출 없음</Text>}
+                {/* 2. 시간 지출 섹션 (소비) */}
+                <View style={styles.sectionContainer}>
+                    <Text style={[styles.sectionHeaderLabel, { color: colors.loss }]}>시간 지출 (소비 자산)</Text>
+                    <View style={[styles.ledgerCard, { borderLeftColor: colors.loss }]}>
+                        {usageList.filter(u => u.category === '소비').map((u, idx, arr) => (
+                            <TouchableOpacity key={u.id} onLongPress={() => deleteUsage(u.id)} activeOpacity={0.7}>
+                                <StatementRow 
+                                    label={u.app_name} 
+                                    value={`－ ${fmt(u.duration_minutes)}`} 
+                                    loss 
+                                    auto={u.source === 'auto'} 
+                                    isLast={idx === arr.length - 1}
+                                />
+                            </TouchableOpacity>
+                        ))}
+                        {usageList.filter(u => u.category === '소비').length === 0 && <Text style={styles.emptyText}>지출 내역이 없습니다.</Text>}
+                    </View>
                 </View>
 
-                <View style={styles.section}>
-                    <SectionHeader title="시간 투자 (자산)" />
-                    {usageList.filter(u => u.category === '투자').map(u => (
-                        <TouchableOpacity key={u.id} onLongPress={() => deleteUsage(u.id)} activeOpacity={0.7}>
-                            <StatementRow label={u.app_name} value={fmt(u.duration_minutes)} profit auto={u.source === 'auto'} />
-                        </TouchableOpacity>
-                    ))}
-                    {usageList.filter(u => u.category === '투자').length === 0 && <Text style={styles.emptyText}>투자 없음</Text>}
+                {/* 3. 시간 투자 섹션 (자산) */}
+                <View style={styles.sectionContainer}>
+                    <Text style={[styles.sectionHeaderLabel, { color: colors.profit }]}>시간 투자 (성장 자산)</Text>
+                    <View style={[styles.ledgerCard, { borderLeftColor: colors.profit }]}>
+                        {usageList.filter(u => u.category === '투자').map((u, idx, arr) => (
+                            <TouchableOpacity key={u.id} onLongPress={() => deleteUsage(u.id)} activeOpacity={0.7}>
+                                <StatementRow 
+                                    label={u.app_name} 
+                                    value={`＋ ${fmt(u.duration_minutes)}`} 
+                                    profit 
+                                    auto={u.source === 'auto'} 
+                                    isLast={idx === arr.length - 1}
+                                />
+                            </TouchableOpacity>
+                        ))}
+                        {usageList.filter(u => u.category === '투자').length === 0 && <Text style={styles.emptyText}>투자 내역이 없습니다.</Text>}
+                    </View>
                 </View>
 
-                <View style={styles.section}>
-                    <SectionHeader title="필수 지출" />
-                    {usageList.filter(u => u.category === '필수').map(u => (
-                        <TouchableOpacity key={u.id} onLongPress={() => deleteUsage(u.id)} activeOpacity={0.7}>
-                            <StatementRow label={u.app_name} value={fmt(u.duration_minutes)} muted auto={u.source === 'auto'} />
-                        </TouchableOpacity>
-                    ))}
-                </View>
+                {/* 4. 필수 활동 */}
+                {usageList.filter(u => u.category === '필수').length > 0 && (
+                    <View style={styles.sectionContainer}>
+                        <Text style={styles.sectionHeaderLabel}>기타 필수 활동</Text>
+                        <View style={[styles.ledgerCard, { borderLeftColor: colors.border }]}>
+                            {usageList.filter(u => u.category === '필수').map((u, idx, arr) => (
+                                <TouchableOpacity key={u.id} onLongPress={() => deleteUsage(u.id)} activeOpacity={0.7}>
+                                    <StatementRow label={u.app_name} value={fmt(u.duration_minutes)} muted isLast={idx === arr.length - 1} />
+                                </TouchableOpacity>
+                            ))}
+                        </View>
+                    </View>
+                )}
 
             </ScrollView>
 
@@ -268,8 +293,8 @@ export default function TodayScreen() {
                     <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setModalVisible(false)}>
                         <TouchableOpacity activeOpacity={1} style={styles.modalBox}>
                             <Text style={styles.modalTitle}>시간 직접 추가</Text>
-                            <TextInput style={styles.modalInput} placeholder="앱 이름 입력" placeholderTextColor={colors.textDisabled} value={newAppName} onChangeText={setNewAppName} />
-                            <TextInput style={styles.modalInput} placeholder="사용 시간 (분 단위)" placeholderTextColor={colors.textDisabled} value={newMinutes} onChangeText={setNewMinutes} keyboardType="number-pad" />
+                            <TextInput style={styles.modalInput} placeholder="앱 이름" placeholderTextColor={colors.textDisabled} value={newAppName} onChangeText={setNewAppName} />
+                            <TextInput style={styles.modalInput} placeholder="사용 시간 (분)" placeholderTextColor={colors.textDisabled} value={newMinutes} onChangeText={setNewMinutes} keyboardType="number-pad" />
                             <View style={styles.categoryRow}>
                                 {['소비', '투자', '필수'].map(cat => (
                                     <TouchableOpacity key={cat} style={[styles.catBtn, newCategory === cat && styles.catBtnActive]} onPress={() => setNewCategory(cat)}>
@@ -286,23 +311,29 @@ export default function TodayScreen() {
     );
 }
 
-function SectionHeader({ title }: { title: string }) {
+function SectionHeader({ title, icon, color }: { title: string, icon: any, color?: string }) {
     return (
         <View style={styles.sectionHeader}>
-            <Text style={styles.sectionLabel}>{title}</Text>
-            <View style={styles.sectionLine} />
+            <Ionicons name={icon} size={14} color={color || colors.textMuted} style={{ marginRight: 6 }} />
+            <Text style={[styles.sectionLabel, color ? { color } : null]}>{title}</Text>
         </View>
     );
 }
 
-function StatementRow({ label, value, bold, loss, profit, muted, auto, sm }: any) {
+function StatementRow({ label, value, loss, profit, muted, auto, isLast, isTotal }: any) {
     return (
-        <View style={[styles.row, sm && { paddingVertical: 4 }]}>
+        <View style={[styles.row, isLast && { borderBottomWidth: 0 }, isTotal && { paddingVertical: 14 }]}>
             <View style={styles.rowLabelGroup}>
-                <Text style={[styles.rowLabel, bold && styles.boldText, muted && { color: colors.textDisabled }, sm && { fontSize: 12 }]}>{label}</Text>
+                <Text style={[styles.rowLabel, muted && { color: colors.textMuted }, isTotal && { fontFamily: font.bold, fontSize: 13 }]}>{label}</Text>
                 {auto && <View style={styles.autoBadge}><Text style={styles.autoBadgeText}>자동</Text></View>}
             </View>
-            <Text style={[styles.rowValue, bold && styles.boldText, loss && { color: colors.loss }, profit && { color: colors.profit }, muted && { color: colors.textDisabled }, sm && { fontSize: 12 }]}>{value}</Text>
+            <Text style={[
+                styles.rowValue,
+                loss && { color: colors.loss, fontFamily: font.bold },
+                profit && { color: colors.profit, fontFamily: font.bold },
+                muted && { color: colors.textSecondary },
+                isTotal && { color: colors.textPrimary, fontFamily: font.bold, fontSize: 15 }
+            ]}>{value}</Text>
         </View>
     );
 }
@@ -320,25 +351,34 @@ const styles = StyleSheet.create({
     alertDot: { width: 4, height: 4, borderRadius: 2, marginRight: 8 },
     alertMsg: { fontFamily: font.medium, fontSize: 12, flex: 1 },
     alertPct: { fontFamily: font.bold, fontSize: 11 },
-    heroCard: { backgroundColor: colors.bgSurface, borderRadius: radius.xl, paddingVertical: 20, paddingHorizontal: 24, marginBottom: 24, ...shadows.medium },
+
+    heroCard: { backgroundColor: colors.bgSurface, borderRadius: radius.xl, paddingVertical: 20, paddingHorizontal: 24, marginBottom: 28, ...shadows.medium },
     heroLabel: { fontFamily: font.medium, fontSize: 10, color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 6 },
     heroValueGroup: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
     heroValue: { fontFamily: font.bold, fontSize: 32, letterSpacing: -1.5 },
     heroDiffContainer: { alignItems: 'flex-end' },
     heroDiffLabel: { fontFamily: font.regular, fontSize: 9, color: colors.textMuted, marginBottom: 2 },
     heroDiffText: { fontFamily: font.bold, fontSize: 12 },
-    section: { marginBottom: 12 },
-    sectionHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 6 },
-    sectionLabel: { fontFamily: font.medium, fontSize: 10, color: colors.textDisabled, textTransform: 'uppercase', letterSpacing: 1, marginRight: 10 },
-    sectionLine: { flex: 1, height: 1, backgroundColor: colors.borderSub, opacity: 0.3 },
-    row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 8 },
+
+    sectionContainer: { marginBottom: 24 },
+    sectionHeaderLabel: { fontFamily: font.bold, fontSize: 10, color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 10, paddingLeft: 4 },
+    ledgerCard: { backgroundColor: colors.bgSurface, borderRadius: 16, paddingHorizontal: 16, paddingVertical: 4, borderWidth: 1, borderColor: colors.borderSub, borderLeftWidth: 4 },
+    row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.borderSub },
     rowLabelGroup: { flexDirection: 'row', alignItems: 'center' },
-    rowLabel: { fontFamily: font.regular, fontSize: 14, color: colors.textSecondary },
+    rowLabel: { fontFamily: font.medium, fontSize: 14, color: colors.textPrimary },
     rowValue: { fontFamily: font.medium, fontSize: 14, color: colors.textPrimary },
-    boldText: { fontFamily: font.bold, fontSize: 14, color: colors.textPrimary },
-    autoBadge: { marginLeft: 6, paddingHorizontal: 3, paddingVertical: 0.5, borderRadius: 3, borderWidth: 0.5, borderColor: colors.profitBorder },
-    autoBadgeText: { fontFamily: font.medium, fontSize: 7, color: colors.profit },
-    emptyText: { fontFamily: font.regular, fontSize: 12, color: colors.textDisabled, paddingVertical: 4 },
+    
+    subGroup: { paddingVertical: 10, paddingLeft: 4 },
+    subGroupLabel: { fontFamily: font.bold, fontSize: 10, color: colors.textDisabled, marginBottom: 8, textTransform: 'uppercase' },
+    subItemRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6, paddingLeft: 8 },
+    subItemLabel: { fontFamily: font.regular, fontSize: 13, color: colors.textSecondary },
+    subItemValue: { fontFamily: font.medium, fontSize: 13, color: colors.textSecondary },
+
+    autoBadge: { marginLeft: 8, paddingHorizontal: 4, paddingVertical: 1, borderRadius: 4, backgroundColor: 'rgba(74,222,128,0.05)', borderWidth: 1, borderColor: 'rgba(74,222,128,0.1)' },
+    autoBadgeText: { fontFamily: font.bold, fontSize: 8, color: colors.profit },
+    ledgerDivider: { height: 1, backgroundColor: colors.borderSub, marginHorizontal: -16 },
+    emptyText: { fontFamily: font.regular, fontSize: 13, color: colors.textDisabled, paddingVertical: 20, textAlign: 'center' },
+
     fab: { position: 'absolute', bottom: 24, right: 20, width: 48, height: 48, borderRadius: 24, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center', ...shadows.soft },
     modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'flex-end' },
     modalBox: { backgroundColor: colors.bgSurface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingBottom: 40 },

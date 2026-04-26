@@ -41,6 +41,15 @@ function getAIComment(isProfit: boolean, assetRate: number, type: 'weekly' | 'mo
   return `"${period} 경영 상태가 다소 불안정합니다. 시간 자산이 빠르게 누수되고 있습니다. 다음 기수에는 가장 먼저 '방어해야 할 앱' 1가지를 정해보는 건 어떨까요?"`;
 }
 
+function getAnalogy(lossMinutes: number): string {
+  const h = Math.floor(lossMinutes / 60);
+  if (h >= 500) return `"당신이 날린 ${h}시간은 지구를 15바퀴 걸어서 돌 수 있는 시간입니다."`;
+  if (h >= 300) return `"당신이 날린 ${h}시간은 에베레스트를 12번 오를 수 있는 시간입니다."`;
+  if (h >= 200) return `"당신이 날린 ${h}시간은 서울-부산을 기차로 400번 오갈 수 있는 시간입니다."`;
+  if (h >= 100) return `"당신이 날린 ${h}시간은 제주도를 비행기로 100번 왕복할 수 있는 시간입니다."`;
+  return `"당신이 날린 ${h}시간, 아직 늦지 않았습니다."`;
+}
+
 function getBadges(
   yearDays: { recorded: number; profit: number; loss: number },
   yearStats: { net: number },
@@ -65,6 +74,7 @@ export default function ShareScreen() {
   const [workHours, setWorkHours] = useState(8.0);
   const [prevMonthNet, setPrevMonthNet] = useState<number | null>(null);
   const [nickname, setNickname] = useState('');
+  const [persona, setPersona] = useState<Persona | null>(null);
   const [loading, setLoading] = useState(true);
 
   const today = new Date();
@@ -124,6 +134,11 @@ export default function ShareScreen() {
       analysisData = filteredUsage;
       analysisDays = daysInYear;
     }
+
+    const analysis = calculateAnalysis(analysisData, analysisDays, curSl, curWk);
+    if (tab === 'weekly') setPersona(getWeeklyPersona(analysis));
+    else if (tab === 'monthly') setPersona(getMonthlyPersona(analysis));
+    else setPersona(getYearlyPersona(analysis));
 
     if (prevUsageRes.data) {
       const pData = (prevUsageRes.data as UsageItem[]).filter(u => !isTokenKey(u.app_name) || validLocalKeys.has(u.app_name));
@@ -194,17 +209,35 @@ export default function ShareScreen() {
   const defenseRate = Math.round((1 - monthStats.loss / Math.max(Math.round((24 - sleepHours - workHours) * daysInMonth * 60), 1)) * 100);
   const top5MonthItems = Object.entries(monthData.filter(u => u.category === '투자' || u.category === '소비').reduce((acc, curr) => { acc[curr.app_name] = { min: (acc[curr.app_name]?.min || 0) + curr.duration_minutes, category: curr.category }; return acc; }, {} as Record<string, { min: number, category: string }>) ).sort((a, b) => b[1].min - a[1].min).slice(0, 5);
 
+  const getAssetAllocation = () => {
+    const totalMin = 24 * daysInMonth * 60;
+    const invest = monthData.filter(u => u.category === '투자').reduce((s, u) => s + u.duration_minutes, 0);
+    const loss = monthData.filter(u => u.category === '소비').reduce((s, u) => s + u.duration_minutes, 0);
+    const fixed = (sleepHours + workHours) * daysInMonth * 60;
+    const p = (v: number) => Math.max(0, Math.round((v / totalMin) * 100));
+    return { invest: p(invest), loss: p(loss), fixed: p(fixed) };
+  };
+
+  const getMonthlyHighlights = () => {
+    const byDate: Record<string, number> = {};
+    const disposablePerDay = (24 - sleepHours - workHours) * 60;
+    monthData.forEach(u => {
+      if (!byDate[u.date]) byDate[u.date] = disposablePerDay;
+      if (u.category === '소비') byDate[u.date] -= u.duration_minutes;
+      if (u.category === '필수') byDate[u.date] -= u.duration_minutes;
+      if (u.category === '투자') byDate[u.date] += u.duration_minutes;
+    });
+    const entries = Object.entries(byDate).map(([date, net]) => ({ date, net }));
+    if (entries.length === 0) return { golden: null, dark: null };
+    const sorted = [...entries].sort((a, b) => b.net - a.net);
+    return { golden: sorted[0], dark: sorted[sorted.length - 1] };
+  };
+
   const yearStats = calcNetRaw(usageList, daysInYear, sleepHours, workHours);
   const yearIsProfit = yearStats.net >= 0;
   const yearDays = calcDays(usageList);
   const top3YearInvest = Object.entries(usageList.filter(u => u.category === '투자').reduce((acc, curr) => { acc[curr.app_name] = (acc[curr.app_name] || 0) + curr.duration_minutes; return acc; }, {} as Record<string, number>)).sort((a, b) => b[1] - a[1]).slice(0, 3);
   const earnedBadges = getBadges(yearDays, yearStats, top3YearInvest as [string, number][]);
-
-  const monthAnalysis = calculateAnalysis(monthData, daysInMonth, sleepHours, workHours);
-  const yearAnalysis = calculateAnalysis(usageList, daysInYear, sleepHours, workHours);
-  const persona = tab === 'weekly' ? getWeeklyPersona(weekStats)
-    : tab === 'monthly' ? getMonthlyPersona(monthAnalysis)
-    : getYearlyPersona(yearAnalysis);
 
   const getYearlyRhythm = () => {
     const result: (boolean | null)[] = [];
@@ -292,14 +325,58 @@ export default function ShareScreen() {
                   </View>
                 )}
               </View>
+
               <View style={styles.summaryGrid}>
                 <View style={styles.summaryItem}><Text style={styles.sumLabel}>당기 순손익</Text><View style={styles.heroValueGroup}><Text style={[styles.sumVal, { color: monthIsProfit ? colors.profit : colors.loss }]} adjustsFontSizeToFit numberOfLines={1}>{monthIsProfit ? '＋' : '－'}{fmt(monthStats.net)}</Text></View><Text style={styles.sumSub}>{monthIsProfit ? '흑자 경영' : '적자 경영'}</Text></View>
                 <View style={styles.summaryItem}><Text style={styles.sumLabel}>평균 방어율</Text><Text style={[styles.sumVal, { color: colors.accent }]}>{defenseRate}%</Text><Text style={styles.sumSub}>{defenseRate > 80 ? '리스크 관리 우수' : '관리 필요'}</Text></View>
               </View>
+
               <View style={styles.aiCommentBox}>
                 <View style={styles.aiHeader}><Text style={styles.aiIcon}>✨</Text><Text style={styles.aiTitle}>AI 경영 분석관 리포트</Text></View>
                 <Text style={styles.aiText}>{getAIComment(monthIsProfit, (monthStats.invest / Math.max(monthStats.net, 1)) * 100, 'monthly')}</Text>
               </View>
+
+              <View style={styles.chartSection}>
+                <View style={styles.sectionLabelRow}><Text style={styles.sectionLabel}>시간 자산 포트폴리오 비중</Text></View>
+                <View style={styles.chartContainer}>
+                  {(() => {
+                    const alloc = getAssetAllocation();
+                    const total = 100;
+                    const dash1 = (alloc.invest / total) * 100;
+                    const dash2 = (alloc.loss / total) * 100;
+                    const dash3 = (alloc.fixed / total) * 100;
+                    return (
+                      <Svg width={180} height={180} viewBox="0 0 36 36">
+                        <Circle cx="18" cy="18" r="16" fill="none" stroke="#262626" strokeWidth="4" />
+                        <Circle cx="18" cy="18" r="16" fill="none" stroke={colors.profit} strokeWidth="4" strokeDasharray={`${dash1} 100`} strokeDashoffset="0" transform="rotate(-90 18 18)" />
+                        <Circle cx="18" cy="18" r="16" fill="none" stroke={colors.loss} strokeWidth="4" strokeDasharray={`${dash2} 100`} strokeDashoffset={`-${dash1}`} transform="rotate(-90 18 18)" />
+                        <Circle cx="18" cy="18" r="16" fill="none" stroke="#fbbf24" strokeWidth="4" strokeDasharray={`${dash3} 100`} strokeDashoffset={`-${dash1 + dash2}`} transform="rotate(-90 18 18)" />
+                        <SvgText x="18" y="17" textAnchor="middle" fill="#fff" fontSize="6" fontWeight="900">{`${alloc.invest}%`}</SvgText>
+                        <SvgText x="18" y="22" textAnchor="middle" fill={colors.textDisabled} fontSize="3" letterSpacing="1">INVESTED</SvgText>
+                      </Svg>
+                    );
+                  })()}
+                </View>
+                <View style={styles.legendGrid}>
+                  <View style={styles.legItem}><View style={[styles.legDot, { backgroundColor: colors.profit }]} /><Text style={styles.legTxt}>자기계발 투자</Text></View>
+                  <View style={styles.legItem}><View style={[styles.legDot, { backgroundColor: colors.loss }]} /><Text style={styles.legTxt}>도파민 지출</Text></View>
+                  <View style={styles.legItem}><View style={[styles.legDot, { backgroundColor: '#fbbf24' }]} /><Text style={styles.legTxt}>고정 비용</Text></View>
+                </View>
+              </View>
+
+              <View style={styles.sectionLabelRow}><Text style={styles.sectionLabel}>월간 하이라이트</Text></View>
+              <View style={styles.extremeRow}>
+                {(() => {
+                  const { golden, dark } = getMonthlyHighlights();
+                  return (
+                    <>
+                      <View style={styles.extremeCard}><Text style={[styles.exLabel, { color: colors.profit }]}>GOLDEN DAY</Text><Text style={styles.exVal}>{golden ? `＋${(golden.net / 60).toFixed(1)}h` : '-'}</Text><Text style={styles.exDate}>{golden ? golden.date.slice(5).replace('-', '/') : '-'}</Text></View>
+                      <View style={styles.extremeCard}><Text style={[styles.exLabel, { color: colors.loss }]}>DARK DAY</Text><Text style={styles.exVal}>{dark ? `${(dark.net / 60).toFixed(1)}h` : '-'}</Text><Text style={styles.exDate}>{dark ? dark.date.slice(5).replace('-', '/') : '-'}</Text></View>
+                    </>
+                  );
+                })()}
+              </View>
+
               <View style={styles.assetPortfolioCard}>
                 <Text style={styles.portfolioTitle}>주요 경영 내역 (TOP 5)</Text>
                 {top5MonthItems.map(([name, data], idx) => (
@@ -339,11 +416,10 @@ export default function ShareScreen() {
               </View>
               <View style={styles.section}>
                 <Text style={styles.sectionLabel}>명예의 전당</Text>
-                <View style={styles.hallOfFame}>
+                <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 12, marginBottom: 32 }}>
                   {earnedBadges.map(b => (
                     <View key={b.name} style={styles.badgeIconItem}><Text style={{ fontSize: 24 }}>{b.icon}</Text></View>
                   ))}
-                  {earnedBadges.length === 0 && <Text style={styles.emptyTxt}>아직 획득한 명예 뱃지가 없습니다.</Text>}
                 </View>
               </View>
               <View style={styles.yearlyCanvas}>
@@ -404,11 +480,24 @@ const styles = StyleSheet.create({
   sumVal: { fontFamily: font.bold, fontSize: 20 },
   sumSub: { fontFamily: font.medium, fontSize: 9, color: colors.textDisabled, marginTop: 4 },
 
+  chartSection: { alignItems: 'center', marginBottom: 32 },
+  chartContainer: { position: 'relative', width: 180, height: 180, marginVertical: 20 },
+  legendGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, justifyContent: 'center', width: '100%' },
+  legItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  legDot: { width: 8, height: 8, borderRadius: 2 },
+  legTxt: { fontFamily: font.regular, fontSize: 11, color: colors.textSecondary },
+
   metricsGrid: { flexDirection: 'row', backgroundColor: colors.bgBase, borderRadius: 20, overflow: 'hidden', marginBottom: 32, borderWidth: 1, borderColor: colors.border },
   metricItem: { flex: 1, padding: 20, alignItems: 'center' },
   metricLabel: { fontFamily: font.medium, fontSize: 9, color: colors.textMuted, textTransform: 'uppercase', marginBottom: 8 },
   metricVal: { fontFamily: font.bold, fontSize: 16, color: colors.textPrimary },
   metricSub: { fontFamily: font.bold, fontSize: 9, marginTop: 4 },
+
+  extremeRow: { flexDirection: 'row', gap: 12, marginBottom: 32 },
+  extremeCard: { flex: 1, backgroundColor: colors.bgRaised, padding: 16, borderRadius: 20 },
+  exLabel: { fontFamily: font.bold, fontSize: 9, marginBottom: 8 },
+  exVal: { fontFamily: font.bold, fontSize: 16, color: colors.textPrimary },
+  exDate: { fontFamily: font.medium, fontSize: 10, color: colors.textDisabled, marginTop: 4 },
 
   assetPortfolioCard: { backgroundColor: colors.bgRaised, borderRadius: 24, padding: 20, marginBottom: 32 },
   portfolioTitle: { fontFamily: font.bold, fontSize: 11, color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 20 },
@@ -427,7 +516,6 @@ const styles = StyleSheet.create({
   assetName: { fontFamily: font.medium, fontSize: 13, color: colors.textSecondary },
   assetTime: { fontFamily: font.bold, fontSize: 13, color: colors.textPrimary },
 
-  hallOfFame: { flexDirection: 'row', justifyContent: 'center', gap: 12, marginBottom: 32 },
   badgeIconItem: { width: 50, height: 50, borderRadius: 25, backgroundColor: colors.bgRaised, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.borderSub },
 
   yearlyCanvas: { backgroundColor: colors.bgBase, borderRadius: 20, padding: 16, marginBottom: 32 },
@@ -442,4 +530,5 @@ const styles = StyleSheet.create({
   subActionBtn: { backgroundColor: colors.bgSurface, borderRadius: 16, paddingVertical: 16, alignItems: 'center', borderWidth: 1, borderColor: colors.border },
   subActionText: { fontFamily: font.medium, fontSize: 14, color: colors.textSecondary },
   emptyTxt: { fontFamily: font.regular, fontSize: 12, color: colors.textDisabled, textAlign: 'center', paddingVertical: 10 },
+  reportWrap: { padding: 20 },
 });

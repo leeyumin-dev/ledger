@@ -1,11 +1,11 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity,
   StyleSheet, ScrollView, Alert, Platform, AppState, Modal,
-  KeyboardAvoidingView,
+  KeyboardAvoidingView, Dimensions, ActivityIndicator
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { supabase } from '../src/lib/supabase';
 import {
   hasPermission, requestPermission,
@@ -16,8 +16,12 @@ import {
 import { AppTokenLabel } from '../src/components/AppTokenLabel';
 import { colors, font, fontSize, spacing, radius } from '../src/lib/theme';
 
+const { width } = Dimensions.get('window');
+
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
+  const params = useLocalSearchParams();
+  const view = params.view as 'account' | 'time' | 'sensor';
 
   const [email, setEmail] = useState('');
   const [nickname, setNickname] = useState('');
@@ -25,16 +29,16 @@ export default function ProfileScreen() {
   const [workHours, setWorkHours] = useState('8.0');
   const [userId, setUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [ready, setReady] = useState(false);
   const [screenTimePermission, setScreenTimePermission] = useState(false);
 
-  // 추적 앱 관리 모달
+  // 추적 앱 관리
   const [appPickerVisible, setAppPickerVisible] = useState(false);
-  const [trackedApps, setTrackedApps] = useState<string[]>([]);  // token keys
+  const [trackedApps, setTrackedApps] = useState<string[]>([]);
   const [nameMap, setNameMapState] = useState<Record<string, string>>({});
-  const [picking, setPicking] = useState(false);
-  const [orphanedApps, setOrphanedApps] = useState<string[]>([]);  // Supabase에는 있지만 로컬 토큰 없는 앱
+  const [orphanedApps, setOrphanedApps] = useState<string[]>([]);
 
-  // 이름 입력 (앱 추가 / 재선택 시 필수)
+  // 이름 입력
   const [pendingTokenKeys, setPendingTokenKeys] = useState<string[]>([]);
   const [nameInputs, setNameInputs] = useState<Record<string, string>>({});
   const [savingNames, setSavingNames] = useState(false);
@@ -50,10 +54,7 @@ export default function ProfileScreen() {
 
   useEffect(() => {
     const sub = AppState.addEventListener('change', (nextState) => {
-      if (
-        appStateRef.current.match(/inactive|background/) &&
-        nextState === 'active'
-      ) {
+      if (appStateRef.current.match(/inactive|background/) && nextState === 'active') {
         refreshPermission();
       }
       appStateRef.current = nextState;
@@ -67,22 +68,22 @@ export default function ProfileScreen() {
     setUserId(user.id);
     setEmail(user.email ?? '');
 
-    const [settingsRes, permitted] = await Promise.all([
-      supabase
-        .from('user_settings')
-        .select('sleep_hours, work_hours, nickname')
-        .eq('user_id', user.id)
-        .single(),
+    const [settingsRes, permitted, monitorStatus, map] = await Promise.all([
+      supabase.from('user_settings').select('sleep_hours, work_hours, nickname').eq('user_id', user.id).single(),
       hasPermission(),
+      getMonitoringStatus(),
+      getNameMap(),
     ]);
 
     if (settingsRes.data) {
-      setSleepHours(String(settingsRes.data.sleep_hours));
-      setWorkHours(String(settingsRes.data.work_hours));
+      setSleepHours(String(settingsRes.data.sleep_hours || '7.5'));
+      setWorkHours(String(settingsRes.data.work_hours || '8.0'));
       setNickname(settingsRes.data.nickname ?? '');
     }
-
     setScreenTimePermission(permitted);
+    setTrackedApps(monitorStatus?.appList ?? []);
+    setNameMapState(map);
+    setReady(true);
   }
 
   async function refreshPermission() {
@@ -93,115 +94,81 @@ export default function ProfileScreen() {
   async function saveProfile() {
     if (!userId) return;
     setLoading(true);
-
-    const { error } = await supabase
-      .from('user_settings')
-      .upsert({
+    const { error } = await supabase.from('user_settings').upsert({
         user_id: userId,
         sleep_hours: parseFloat(sleepHours),
         work_hours: parseFloat(workHours),
         nickname: nickname.trim(),
         updated_at: new Date().toISOString(),
-      }, { onConflict: 'user_id' });
+    }, { onConflict: 'user_id' });
 
     if (error) Alert.alert('오류', '저장에 실패했어요.');
-    else Alert.alert('저장 완료', '프로필이 저장됐어요.');
-
+    else {
+      Alert.alert('저장 완료', '설정이 성공적으로 반영되었습니다.');
+      router.back();
+    }
     setLoading(false);
   }
 
   async function handleScreenTimePermission() {
     if (screenTimePermission) {
-      Alert.alert(
-        '스크린타임 권한',
-        '이미 허용되어 있어요. 권한을 변경하려면 iPhone 설정 → 스크린 타임에서 변경해요.',
-        [{ text: '확인' }]
-      );
+      Alert.alert('스크린타임 권한', '이미 허용되어 있습니다.');
       return;
     }
     const result = await requestPermission();
     setScreenTimePermission(result);
   }
 
-  // 추적 앱 관리 모달 열기
   async function handleOpenAppPicker() {
-    const [status, map] = await Promise.all([
-      getMonitoringStatus(),
-      getNameMap(),
-    ]);
+    const [status, map] = await Promise.all([getMonitoringStatus(), getNameMap()]);
     const keys = status?.appList ?? [];
     setTrackedApps(keys);
     setNameMapState(map);
-
-    // Supabase에 있지만 로컬 토큰 없는 앱 = 재선택 필요
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
-      const { data } = await supabase
-        .from('app_categories')
-        .select('app_name')
-        .eq('user_id', user.id);
+      const { data } = await supabase.from('app_categories').select('app_name').eq('user_id', user.id);
       const localNames = new Set(keys.map(k => map[k]).filter(Boolean));
-      setOrphanedApps(
-        (data ?? []).map(d => d.app_name).filter(n => !localNames.has(n))
-      );
+      setOrphanedApps((data ?? []).map(d => d.app_name).filter(n => !localNames.has(n)));
     }
-
     setAppPickerVisible(true);
   }
 
-  // 추적 중인 앱 제거
   async function handleRemoveApp(key: string) {
     const displayName = nameMap[key] ?? key;
-    Alert.alert(
-      '추적 중지',
-      `'${displayName}' 추적을 중지할까요?\n\n과거 손익계산서에서 이 앱의 기록이 더 이상 표시되지 않아요.`,
-      [
+    Alert.alert('추적 중지', `'${displayName}' 추적을 중지할까요?`, [
         { text: '취소', style: 'cancel' },
-        {
-          text: '중지',
-          style: 'destructive',
-          onPress: async () => {
+        { text: '중지', style: 'destructive', onPress: async () => {
             await removeAppToken(key);
             const { data: { user } } = await supabase.auth.getUser();
-            if (user) {
-              await supabase
-                .from('app_categories')
-                .delete()
-                .eq('user_id', user.id)
-                .eq('app_name', displayName);
-            }
-            const remaining = trackedApps.filter(a => a !== key);
-            setTrackedApps(remaining);
-            if (remaining.length > 0) await startMonitoring();
-          },
-        },
-      ]
-    );
+            if (user) await supabase.from('app_categories').delete().eq('user_id', user.id).eq('app_name', displayName);
+            setTrackedApps(prev => prev.filter(a => a !== key));
+            if (trackedApps.length > 1) await startMonitoring();
+        }}
+    ]);
   }
 
-  // 재선택 필요 앱 → picker → 기존 이름 자동 채움
-  async function handleReselect(appName: string) {
-    setPicking(true);
+  async function handleAddApp() {
     const result = await presentPickerForToken();
-    setPicking(false);
     if (result === 'cancelled') return;
-    if (result === 'category_only') {
-      Alert.alert('개별 앱을 선택해주세요', '카테고리를 펼쳐서 추적할 앱을 개별로 선택해주세요.');
-      return;
-    }
-
     const newKeys: string[] = [];
     for (let i = 0; i < result.count; i++) {
       const newKey = await confirmPendingTokenAuto(i);
       if (newKey) newKeys.push(newKey);
     }
+    if (newKeys.length === 0) return;
+    setNameInputs({});
+    setPendingTokenKeys(newKeys);
+  }
 
-    if (newKeys.length === 0) {
-      Alert.alert('이미 추가됨', '선택한 앱이 이미 추적 중이에요.');
-      return;
+  async function handleReselect(appName: string) {
+    const result = await presentPickerForToken();
+    if (result === 'cancelled') return;
+    const newKeys: string[] = [];
+    for (let i = 0; i < result.count; i++) {
+      const newKey = await confirmPendingTokenAuto(i);
+      if (newKey) newKeys.push(newKey);
     }
-
-    // 기존 이름으로 자동 채움 (첫 번째 키에만)
+    if (newKeys.length === 0) return;
     const prefill: Record<string, string> = {};
     prefill[newKeys[0]] = appName;
     setNameInputs(prefill);
@@ -209,82 +176,28 @@ export default function ProfileScreen() {
     setPendingTokenKeys(newKeys);
   }
 
-  // "앱 추가" → picker → 이름 입력 (필수)
-  async function handleAddApp() {
-    setPicking(true);
-    const result = await presentPickerForToken();
-    setPicking(false);
-    if (result === 'cancelled') return;
-    if (result === 'category_only') {
-      Alert.alert('개별 앱을 선택해주세요', '카테고리를 펼쳐서 추적할 앱을 개별로 선택해주세요.');
-      return;
-    }
-
-    const newKeys: string[] = [];
-    for (let i = 0; i < result.count; i++) {
-      const newKey = await confirmPendingTokenAuto(i);
-      if (newKey) newKeys.push(newKey);
-    }
-
-    if (newKeys.length === 0) {
-      // 선택한 앱이 전부 이미 추적 중인 경우
-      Alert.alert('이미 추가됨', '선택한 앱이 이미 추적 중이에요.');
-      return;
-    }
-    setNameInputs({});
-    setPendingTokenKeys(newKeys);
-  }
-
-  async function cancelNameInput() {
-    for (const key of pendingTokenKeys) {
-      await removeAppToken(key);
-    }
-    setPendingTokenKeys([]);
-    setNameInputs({});
-    setReselecting(null);
-  }
-
   async function saveNames() {
     for (const key of pendingTokenKeys) {
       if (!nameInputs[key]?.trim()) {
-        Alert.alert('이름 필요', '모든 앱의 이름을 입력해주세요.');
+        Alert.alert('이름 필요', '앱 이름을 입력해주세요.');
         return;
       }
     }
-    const newNames = pendingTokenKeys.map(k => nameInputs[k].trim());
-    const existingNames = trackedApps.map(k => nameMap[k] ?? k);
-    const duplicate = newNames.find(n => existingNames.includes(n));
-    if (duplicate) {
-      Alert.alert('중복', `'${duplicate}'는 이미 추가된 앱이에요.`);
-      return;
-    }
-
     setSavingNames(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
       const newNameMap: Record<string, string> = {};
       pendingTokenKeys.forEach(k => { newNameMap[k] = nameInputs[k].trim(); });
-
       if (user) {
         await supabase.from('app_categories').upsert(
           pendingTokenKeys.map(key => ({
-            user_id: user.id,
-            app_name: newNameMap[key],
-            bundle_id: '',
-            category: '소비',
-            budget_minutes: 0,
-            goal_minutes: 0,
-          })),
-          { onConflict: 'user_id,app_name' }
+            user_id: user.id, app_name: newNameMap[key], bundle_id: '', category: '소비', budget_minutes: 0, goal_minutes: 0,
+          })), { onConflict: 'user_id,app_name' }
         );
       }
       await setNameMap(newNameMap);
       setNameMapState(prev => ({ ...prev, ...newNameMap }));
-      setTrackedApps(prev => {
-        const next = [...prev];
-        pendingTokenKeys.forEach(k => { if (!next.includes(k)) next.push(k); });
-        return next;
-      });
+      setTrackedApps(prev => [...new Set([...prev, ...pendingTokenKeys])]);
       await startMonitoring();
       if (reselecting) {
         setOrphanedApps(prev => prev.filter(n => n !== reselecting));
@@ -296,309 +209,173 @@ export default function ProfileScreen() {
     }
   }
 
-  async function handleLogout() {
-    Alert.alert('로그아웃', '정말 로그아웃할까요?', [
-      { text: '취소', style: 'cancel' },
-      {
-        text: '로그아웃',
-        style: 'destructive',
-        onPress: () => supabase.auth.signOut(),
-      },
-    ]);
-  }
-
   const disposableHours = 24 - parseFloat(sleepHours || '0') - parseFloat(workHours || '0');
 
+  const viewConfig = useMemo(() => {
+    if (view === 'account') return { title: '계정 정보', btn: '정보 저장하기' };
+    if (view === 'time') return { title: '기초 자산 설정', btn: '목표 저장하기' };
+    if (view === 'sensor') return { title: '스크린타임 연동', btn: '설정 완료' };
+    return { title: '설정', btn: '저장하기' };
+  }, [view]);
+
   return (
-    <View style={{ flex: 1, backgroundColor: colors.bgBase }}>
-      {/* 헤더 */}
+    <View style={styles.container}>
       <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Text style={styles.backIcon}>‹</Text>
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>프로필 & 설정</Text>
-        <View style={{ width: 36 }} />
+        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}><Text style={styles.backIcon}>‹</Text></TouchableOpacity>
+        <Text style={styles.headerTitle}>{viewConfig.title}</Text>
+        <View style={{ width: 40 }} />
       </View>
 
-      <ScrollView contentContainerStyle={styles.content}>
-
-        {/* 계정 */}
-        <Text style={styles.sectionLabel}>계정</Text>
-        <View style={styles.infoCard}>
-          <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>이메일</Text>
-            <Text style={styles.infoValue} numberOfLines={1}>{email}</Text>
-          </View>
-          <View style={styles.divider} />
-          <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>닉네임</Text>
-            <TextInput
-              style={styles.nicknameInput}
-              value={nickname}
-              onChangeText={setNickname}
-              placeholder="닉네임 입력"
-              placeholderTextColor={colors.textMuted}
-              maxLength={20}
-            />
-          </View>
+      {!ready && (
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+          <ActivityIndicator color={colors.textDisabled} />
         </View>
-        <Text style={styles.infoHint}>닉네임은 월간 결산 보고서 제목에 표시됩니다</Text>
-
-        <View style={styles.thickDivider} />
-
-        {/* 시간 설정 */}
-        <Text style={styles.sectionLabel}>시간 설정</Text>
-
-        <View style={styles.inputRow}>
-          <View style={styles.inputLeft}>
-            <Text style={styles.inputLabel}>수면 시간</Text>
-            <Text style={styles.inputSub}>가처분 시간 계산에 사용</Text>
+      )}
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} style={{ display: ready ? 'flex' : 'none' }}>
+        
+        {/* 1. Account Section */}
+        {view === 'account' && (
+          <View key="account-view">
+            <View style={styles.glassCard}>
+              <View style={styles.infoRow}>
+                <Text style={styles.infoLabel}>닉네임</Text>
+                <TextInput style={[styles.nicknameInput, { color: colors.accent }]} value={nickname} onChangeText={setNickname} placeholder="이름 입력" placeholderTextColor={colors.textDisabled} maxLength={20} />
+              </View>
+              <View style={styles.divider} />
+              <View style={styles.infoRow}>
+                <Text style={styles.infoLabel}>계정 이메일</Text>
+                <Text style={[styles.infoValue, { color: colors.textMuted }]}>{email}</Text>
+              </View>
+            </View>
           </View>
-          <View style={styles.inputRight}>
-            <TextInput
-              style={styles.input}
-              value={sleepHours}
-              onChangeText={setSleepHours}
-              keyboardType="decimal-pad"
-              placeholder="7.5"
-              placeholderTextColor={colors.textMuted}
-            />
-            <Text style={styles.inputUnit}>시간</Text>
+        )}
+
+        {/* 2. Time Targets Section */}
+        {view === 'time' && (
+          <View key="time-view">
+            <View style={styles.glassCard}>
+              <View style={styles.inputRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.inputTitle}>기초 수면 시간</Text>
+                  <Text style={styles.inputSub}>하루 평균 수면량을 입력하세요</Text>
+                </View>
+                <View style={styles.glassInputBox}>
+                  <TextInput style={styles.glassInput} value={sleepHours} onChangeText={setSleepHours} keyboardType="decimal-pad" />
+                  <Text style={styles.unit}>h</Text>
+                </View>
+              </View>
+              <View style={styles.divider} />
+              <View style={styles.inputRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.inputTitle}>고정 업무 시간</Text>
+                  <Text style={styles.inputSub}>직장/학업 등 필수 시간을 입력하세요</Text>
+                </View>
+                <View style={styles.glassInputBox}>
+                  <TextInput style={styles.glassInput} value={workHours} onChangeText={setWorkHours} keyboardType="decimal-pad" />
+                  <Text style={styles.unit}>h</Text>
+                </View>
+              </View>
+            </View>
+
+            <View style={styles.summaryBox}>
+              <Text style={styles.summaryLabel}>DAILY DISPOSABLE TIME</Text>
+              <Text style={styles.summaryValue}>{isNaN(disposableHours) ? '—' : `${disposableHours.toFixed(1)}h`}</Text>
+              <Text style={styles.summarySub}>24h - {sleepHours}h(수면) - {workHours}h(업무)</Text>
+            </View>
           </View>
-        </View>
+        )}
 
-        <View style={styles.thinDivider} />
-
-        <View style={styles.inputRow}>
-          <View style={styles.inputLeft}>
-            <Text style={styles.inputLabel}>업무 시간</Text>
-            <Text style={styles.inputSub}>평일 기준</Text>
-          </View>
-          <View style={styles.inputRight}>
-            <TextInput
-              style={styles.input}
-              value={workHours}
-              onChangeText={setWorkHours}
-              keyboardType="decimal-pad"
-              placeholder="8.0"
-              placeholderTextColor={colors.textMuted}
-            />
-            <Text style={styles.inputUnit}>시간</Text>
-          </View>
-        </View>
-
-        <View style={styles.resultBox}>
-          <Text style={styles.resultLabel}>하루 가처분 시간</Text>
-          <Text style={styles.resultValue}>
-            {isNaN(disposableHours) ? '—' : `${disposableHours.toFixed(1)}h`}
-          </Text>
-          <Text style={styles.resultSub}>
-            24h － 수면 {sleepHours}h － 업무 {workHours}h
-          </Text>
-        </View>
-
-        <View style={styles.thickDivider} />
-
-        {/* 스크린타임 */}
-        {Platform.OS === 'ios' && (
-          <>
-            <Text style={styles.sectionLabel}>스크린타임</Text>
-            <View style={styles.infoCard}>
+        {/* 3. Data Source Section */}
+        {view === 'sensor' && (
+          <View key="sensor-view">
+            <View style={styles.glassCard}>
               <View style={styles.infoRow}>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.inputLabel}>자동 사용량 측정</Text>
-                  <Text style={styles.inputSub}>
-                    {screenTimePermission
-                      ? '앱 사용 시간이 자동으로 기록돼요'
-                      : '허용하면 앱 사용 시간을 자동으로 기록해요'}
-                  </Text>
+                  <Text style={styles.inputTitle}>스크린타임 자동 측정</Text>
+                  <Text style={styles.inputSub}>{screenTimePermission ? '정상 작동 중' : '권한 허용 필요'}</Text>
                 </View>
-                <TouchableOpacity
-                  style={[
-                    styles.permissionBtn,
-                    screenTimePermission && styles.permissionBtnActive,
-                  ]}
-                  onPress={handleScreenTimePermission}
-                >
-                  <Text style={[
-                    styles.permissionBtnText,
-                    screenTimePermission && styles.permissionBtnTextActive,
-                  ]}>
-                    {screenTimePermission ? '허용됨' : '허용하기'}
-                  </Text>
+                <TouchableOpacity style={[styles.badgeBtn, screenTimePermission && styles.badgeBtnActive]} onPress={handleScreenTimePermission}>
+                  <Text style={[styles.badgeText, screenTimePermission && styles.badgeTextActive]}>{screenTimePermission ? 'ACTIVE' : 'OFF'}</Text>
                 </TouchableOpacity>
               </View>
               {screenTimePermission && (
                 <>
                   <View style={styles.divider} />
                   <TouchableOpacity style={styles.infoRow} onPress={handleOpenAppPicker}>
-                    <Text style={styles.inputLabel}>추적 앱 변경</Text>
-                    <Text style={styles.inputSub}>{'>'}</Text>
+                    <View>
+                        <Text style={styles.inputTitle}>추적 앱 인벤토리 관리</Text>
+                        <Text style={styles.inputSub}>현재 {trackedApps.length}개의 자산 연결됨</Text>
+                    </View>
+                    <Text style={styles.arrow}>›</Text>
                   </TouchableOpacity>
                 </>
               )}
             </View>
-            <View style={styles.thickDivider} />
-          </>
+          </View>
         )}
 
-        {/* 앱 관리 */}
-        <Text style={styles.sectionLabel}>앱 관리</Text>
-        <TouchableOpacity
-          style={styles.navBtn}
-          onPress={() => router.push('/category-settings')}
-        >
-          <Text style={styles.navBtnText}>소비 · 투자 설정</Text>
-          <Text style={styles.navBtnArrow}>›</Text>
+        <TouchableOpacity style={[styles.saveBtn, loading && { opacity: 0.5 }]} onPress={saveProfile} disabled={loading}>
+          {loading ? <ActivityIndicator color={colors.bgBase} /> : <Text style={styles.saveBtnText}>{viewConfig.btn}</Text>}
         </TouchableOpacity>
-
-        {/* 저장 버튼 */}
-        <TouchableOpacity
-          style={[styles.saveBtn, loading && styles.saveBtnDisabled]}
-          onPress={saveProfile}
-          disabled={loading}
-        >
-          <Text style={styles.saveBtnText}>
-            {loading ? '저장 중...' : '저장하기'}
-          </Text>
-        </TouchableOpacity>
-
-        <View style={styles.thickDivider} />
-
-        {/* 로그아웃 */}
-        <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
-          <Text style={styles.logoutText}>로그아웃</Text>
-        </TouchableOpacity>
-
-        <View style={{ height: 40 }} />
+        <View style={{ height: 100 }} />
       </ScrollView>
 
-      {/* 추적 앱 관리 모달 */}
-      <Modal
-        visible={appPickerVisible}
-        animationType="slide"
-        presentationStyle="pageSheet"
-        onRequestClose={pendingTokenKeys.length > 0 ? cancelNameInput : () => setAppPickerVisible(false)}
-      >
-        <KeyboardAvoidingView
-          style={{ flex: 1, backgroundColor: colors.bgBase }}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        >
+      {/* Sensor Modal */}
+      <Modal visible={appPickerVisible} animationType="slide" presentationStyle="pageSheet">
+        <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.bgBase }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
           <View style={styles.modalHeader}>
-            {pendingTokenKeys.length > 0 ? (
-              <TouchableOpacity onPress={cancelNameInput}>
-                <Text style={styles.modalDone}>취소</Text>
-              </TouchableOpacity>
-            ) : (
-              <View style={{ width: 40 }} />
-            )}
-            <Text style={styles.modalTitle}>
-              {pendingTokenKeys.length > 0 ? '앱 이름 입력' : '추적 앱 관리'}
-            </Text>
-            {pendingTokenKeys.length > 0 ? (
-              <View style={{ width: 40 }} />
-            ) : (
-              <TouchableOpacity onPress={() => setAppPickerVisible(false)}>
-                <Text style={styles.modalDone}>닫기</Text>
-              </TouchableOpacity>
-            )}
+            <TouchableOpacity onPress={() => setAppPickerVisible(false)}><Text style={styles.modalClose}>닫기</Text></TouchableOpacity>
+            <Text style={styles.modalTitle}>추적 앱 관리</Text>
+            <View style={{ width: 40 }} />
           </View>
 
           {pendingTokenKeys.length > 0 ? (
-            <>
-              <Text style={styles.nicknameModalHint}>
-                앱 이름을 직접 입력해주세요{'\n'}
-                <Text style={{ color: colors.textMuted }}>예: 유튜브, 인스타그램</Text>
-              </Text>
-              <ScrollView contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 32 }}>
+            <ScrollView contentContainerStyle={{ padding: 24 }}>
+                <Text style={styles.modalHint}>연결된 앱의 이름을 설정하세요.</Text>
                 {pendingTokenKeys.map((key, i) => (
-                  <View key={key} style={styles.nicknameRow}>
-                    <AppTokenLabel
-                      tokenKey={key}
-                      fontSize={18}
-                      iconOnly
-                      style={{ width: 30, height: 30, marginRight: 12 }}
-                    />
-                    <TextInput
-                      style={[styles.nicknameRowInput, { flex: 1 }]}
-                      placeholder="앱 이름 입력 (필수)"
-                      placeholderTextColor={colors.textDisabled}
-                      value={nameInputs[key] ?? ''}
-                      onChangeText={text => setNameInputs(prev => ({ ...prev, [key]: text }))}
-                      maxLength={20}
-                      returnKeyType={i < pendingTokenKeys.length - 1 ? 'next' : 'done'}
-                      autoFocus={i === 0}
-                    />
+                  <View key={key} style={styles.nameInputRow}>
+                    <AppTokenLabel tokenKey={key} fontSize={18} iconOnly style={{ width: 32, height: 32, marginRight: 12 }} />
+                    <TextInput style={styles.nameInput} placeholder="앱 이름 (필수)" placeholderTextColor={colors.textDisabled} value={nameInputs[key] ?? ''} onChangeText={text => setNameInputs(prev => ({ ...prev, [key]: text }))} autoFocus={i === 0} />
                   </View>
                 ))}
-                <TouchableOpacity
-                  style={[styles.nicknameSaveBtn, savingNames && { opacity: 0.5 }, { marginTop: 24 }]}
-                  onPress={saveNames}
-                  disabled={savingNames}
-                >
-                  <Text style={styles.nicknameSaveText}>
-                    {savingNames ? '저장 중...' : '저장하기'}
-                  </Text>
-                </TouchableOpacity>
-              </ScrollView>
-            </>
+                <TouchableOpacity style={styles.nameSaveBtn} onPress={saveNames}><Text style={styles.nameSaveText}>자산으로 등록</Text></TouchableOpacity>
+            </ScrollView>
           ) : (
             <ScrollView contentContainerStyle={styles.modalContent}>
-              {trackedApps.length === 0 && orphanedApps.length === 0 ? (
-                <Text style={styles.emptyText}>추적 중인 앱이 없어요</Text>
-              ) : (
-                <>
-                  {trackedApps.length > 0 && (
-                    <View style={styles.trackedList}>
-                      {trackedApps.map((key, i) => (
-                        <View
-                          key={key}
-                          style={[styles.trackedRow, i < trackedApps.length - 1 && styles.trackedRowBorder]}
-                        >
-                          <Text style={styles.trackedName}>{nameMap[key] ?? key}</Text>
-                          <TouchableOpacity
-                            onPress={() => handleRemoveApp(key)}
-                            disabled={picking}
-                            style={styles.removeBtn}
-                          >
-                            <Text style={styles.removeBtnText}>✕</Text>
-                          </TouchableOpacity>
+              <Text style={styles.sectionLabel}>추적 중 ({trackedApps.length})</Text>
+              <View style={styles.glassCard}>
+                {trackedApps.length === 0 ? <Text style={styles.emptyText}>추적 중인 앱이 없습니다</Text> : trackedApps.map((key, i) => (
+                    <View key={key}>
+                        {i > 0 && <View style={styles.divider} />}
+                        <View style={styles.sensorRow}>
+                            <View style={styles.sensorIcon}>
+                                <AppTokenLabel tokenKey={key} iconOnly fontSize={20} style={{ width: 28, height: 28 }} />
+                                <View style={styles.liveDot} />
+                            </View>
+                            <View style={{ flex: 1 }}><Text style={styles.sensorName}>{nameMap[key] ?? key}</Text><Text style={styles.sensorStatus}>LIVE</Text></View>
+                            <TouchableOpacity onPress={() => handleRemoveApp(key)} style={styles.removeBtn}><Text style={styles.removeIcon}>✕</Text></TouchableOpacity>
                         </View>
-                      ))}
                     </View>
-                  )}
-                  {orphanedApps.length > 0 && (
-                    <>
-                      <Text style={styles.orphanedLabel}>재선택 필요</Text>
-                      <View style={styles.trackedList}>
+                ))}
+              </View>
+              {orphanedApps.length > 0 && (
+                <View style={{ marginTop: 32 }}>
+                    <Text style={[styles.sectionLabel, { color: colors.loss }]}>재연결 필요 ({orphanedApps.length})</Text>
+                    <View style={[styles.glassCard, { borderColor: 'rgba(244, 63, 94, 0.2)', backgroundColor: 'rgba(244, 63, 94, 0.02)' }]}>
                         {orphanedApps.map((name, i) => (
-                          <View
-                            key={name}
-                            style={[styles.trackedRow, i < orphanedApps.length - 1 && styles.trackedRowBorder]}
-                          >
-                            <Text style={[styles.trackedName, { color: colors.textMuted }]}>{name}</Text>
-                            <TouchableOpacity
-                              onPress={() => handleReselect(name)}
-                              disabled={picking}
-                              style={styles.reselectBtn}
-                            >
-                              <Text style={styles.reselectBtnText}>재선택</Text>
-                            </TouchableOpacity>
-                          </View>
+                            <View key={name}>
+                                {i > 0 && <View style={styles.divider} />}
+                                <View style={styles.sensorRow}>
+                                    <View style={[styles.sensorIcon, { opacity: 0.3 }]}><Text style={{ fontSize: 18 }}>📱</Text></View>
+                                    <View style={{ flex: 1 }}><Text style={[styles.sensorName, { color: colors.textDisabled }]}>{name}</Text><Text style={[styles.sensorStatus, { color: colors.loss }]}>DISCONNECTED</Text></View>
+                                    <TouchableOpacity onPress={() => handleReselect(name)} style={styles.reBtn}><Text style={styles.reBtnText}>재연결</Text></TouchableOpacity>
+                                </View>
+                            </View>
                         ))}
-                      </View>
-                    </>
-                  )}
-                </>
+                    </View>
+                </View>
               )}
-              <TouchableOpacity
-                style={[styles.addBtn, picking && { opacity: 0.4 }]}
-                onPress={handleAddApp}
-                disabled={picking}
-              >
-                <Text style={styles.addBtnText}>+ 앱 추가</Text>
-              </TouchableOpacity>
-              <View style={{ height: 40 }} />
+              <TouchableOpacity style={styles.addBtn} onPress={handleAddApp}><Text style={styles.addBtnText}>+ ADD NEW ASSET</Text></TouchableOpacity>
             </ScrollView>
           )}
         </KeyboardAvoidingView>
@@ -608,426 +385,55 @@ export default function ProfileScreen() {
 }
 
 const styles = StyleSheet.create({
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingBottom: spacing.sm,
-    borderBottomWidth: 0.5,
-    borderBottomColor: colors.borderSub,
-  },
-  backBtn: {
-    width: 36,
-    height: 36,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  backIcon: {
-    fontSize: 28,
-    color: colors.textPrimary,
-    lineHeight: 32,
-  },
-  headerTitle: {
-    fontFamily: font.medium,
-    fontSize: 15,
-    color: colors.textPrimary,
-  },
-  content: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.lg,
-  },
-  sectionLabel: {
-    fontFamily: font.regular,
-    fontSize: fontSize.xs,
-    color: colors.textMuted,
-    letterSpacing: 1.5,
-    textTransform: 'uppercase',
-    marginBottom: spacing.sm,
-  },
-  infoCard: {
-    backgroundColor: colors.bgSurface,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    overflow: 'hidden',
-  },
-  infoRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 14,
-    paddingHorizontal: spacing.md,
-  },
-  infoLabel: {
-    fontFamily: font.regular,
-    fontSize: fontSize.sm,
-    color: colors.textMuted,
-    width: 64,
-  },
-  infoValue: {
-    fontFamily: font.regular,
-    fontSize: 13,
-    color: colors.textDisabled,
-    flex: 1,
-    textAlign: 'right',
-  },
-  nicknameInput: {
-    fontFamily: font.medium,
-    fontSize: fontSize.md,
-    color: colors.textPrimary,
-    flex: 1,
-    textAlign: 'right',
-    padding: 0,
-  },
-  divider: {
-    height: 0.5,
-    backgroundColor: colors.border,
-    marginHorizontal: spacing.md,
-  },
-  infoHint: {
-    fontFamily: font.regular,
-    fontSize: fontSize.xs,
-    color: colors.textMuted,
-    marginTop: spacing.sm,
-    marginBottom: 4,
-    paddingHorizontal: 4,
-  },
-  thickDivider: {
-    height: 1.5,
-    backgroundColor: colors.textDisabled,
-    marginVertical: 20,
-  },
-  thinDivider: {
-    height: 0.5,
-    backgroundColor: colors.border,
-    marginVertical: 4,
-  },
-  inputRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: spacing.sm,
-  },
-  inputLeft: { flex: 1 },
-  inputLabel: {
-    fontFamily: font.medium,
-    fontSize: 13,
-    color: colors.textPrimary,
-    marginBottom: 3,
-  },
-  inputSub: {
-    fontFamily: font.regular,
-    fontSize: fontSize.xs,
-    color: colors.textMuted,
-  },
-  inputRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  input: {
-    backgroundColor: colors.bgSurface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.sm,
-    padding: 10,
-    width: 64,
-    color: colors.textPrimary,
-    fontFamily: font.medium,
-    fontSize: fontSize.md,
-    textAlign: 'center',
-  },
-  inputUnit: {
-    fontFamily: font.regular,
-    fontSize: fontSize.sm,
-    color: colors.textMuted,
-  },
-  resultBox: {
-    backgroundColor: colors.bgSurface,
-    borderRadius: radius.md,
-    padding: 20,
-    alignItems: 'center',
-    marginTop: spacing.sm,
-    marginBottom: 4,
-  },
-  resultLabel: {
-    fontFamily: font.regular,
-    fontSize: fontSize.xs,
-    color: colors.textMuted,
-    letterSpacing: 1.2,
-    textTransform: 'uppercase',
-    marginBottom: spacing.sm,
-  },
-  resultValue: {
-    fontFamily: font.medium,
-    fontSize: 36,
-    color: colors.textPrimary,
-    marginBottom: 6,
-  },
-  resultSub: {
-    fontFamily: font.regular,
-    fontSize: fontSize.xs,
-    color: colors.textMuted,
-  },
-  permissionBtn: {
-    backgroundColor: colors.bgRaised,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.sm,
-    paddingHorizontal: 14,
-    paddingVertical: spacing.sm,
-  },
-  permissionBtnActive: {
-    backgroundColor: 'rgba(57,255,20,0.08)',
-    borderColor: 'rgba(57,255,20,0.3)',
-  },
-  permissionBtnText: {
-    fontFamily: font.regular,
-    fontSize: fontSize.sm,
-    color: colors.textMuted,
-  },
-  permissionBtnTextActive: {
-    color: '#39FF14',
-  },
-  navBtn: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: colors.bgSurface,
-    borderRadius: radius.md,
-    padding: spacing.md,
-    marginBottom: spacing.md,
-  },
-  navBtnText: {
-    fontFamily: font.regular,
-    fontSize: 13,
-    color: colors.textPrimary,
-  },
-  navBtnArrow: {
-    fontFamily: font.regular,
-    fontSize: 18,
-    color: colors.textMuted,
-  },
-  saveBtn: {
-    backgroundColor: colors.accent,
-    borderRadius: radius.md,
-    padding: spacing.md,
-    alignItems: 'center',
-  },
-  saveBtnDisabled: { opacity: 0.5 },
-  saveBtnText: {
-    fontFamily: font.medium,
-    fontSize: fontSize.md,
-    color: '#ffffff',
-  },
-  logoutBtn: {
-    padding: spacing.md,
-    alignItems: 'center',
-  },
-  logoutText: {
-    fontFamily: font.regular,
-    fontSize: 13,
-    color: colors.textMuted,
-  },
-  // 모달
-  modalContainer: {
-    flex: 1,
-    backgroundColor: colors.bgBase,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: spacing.md,
-    borderBottomWidth: 0.5,
-    borderBottomColor: colors.border,
-  },
-  modalTitle: {
-    fontFamily: font.medium,
-    fontSize: 15,
-    color: colors.textPrimary,
-  },
-  modalDone: {
-    fontFamily: font.medium,
-    fontSize: fontSize.md,
-    color: colors.accent,
-  },
-  modalEdit: {
-    fontFamily: font.regular,
-    fontSize: 13,
-    color: colors.textMuted,
-  },
-  modalEditActive: {
-    color: colors.accent,
-  },
-  pickingBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.bgRaised,
-    borderRadius: radius.sm,
-    marginHorizontal: 20,
-    marginTop: spacing.sm,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-  },
-  pickingBannerText: {
-    fontFamily: font.regular,
-    fontSize: 13,
-    color: colors.textPrimary,
-  },
-  modalContent: {
-    paddingHorizontal: 20,
-    paddingTop: spacing.lg,
-  },
-  modalSectionLabel: {
-    fontFamily: font.regular,
-    fontSize: fontSize.xs,
-    color: colors.textMuted,
-    letterSpacing: 1.5,
-    textTransform: 'uppercase',
-    marginBottom: spacing.sm,
-  },
-  emptyText: {
-    fontFamily: font.regular,
-    fontSize: 13,
-    color: colors.textDisabled,
-    paddingVertical: 20,
-    textAlign: 'center',
-  },
-  trackedList: {
-    backgroundColor: colors.bgSurface,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    overflow: 'hidden',
-    marginBottom: 20,
-  },
-  trackedRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 14,
-    paddingHorizontal: spacing.md,
-    minHeight: 52,
-  },
-  trackedName: {
-    fontFamily: font.regular,
-    fontSize: 13,
-    color: colors.textPrimary,
-    flex: 1,
-  },
-  trackedRowBorder: {
-    borderBottomWidth: 0.5,
-    borderBottomColor: colors.border,
-  },
-  removeBtn: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    marginLeft: spacing.sm,
-  },
-  removeBtnText: {
-    fontFamily: font.regular,
-    fontSize: fontSize.md,
-    color: colors.textMuted,
-  },
-  orphanedLabel: {
-    fontFamily: font.regular,
-    fontSize: fontSize.xs,
-    color: colors.textMuted,
-    marginTop: 20,
-    marginBottom: spacing.sm,
-    paddingHorizontal: 4,
-  },
-  reselectBtn: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    marginLeft: spacing.sm,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  reselectBtnText: {
-    fontFamily: font.regular,
-    fontSize: fontSize.sm,
-    color: colors.accent,
-  },
-  addBtn: {
-    paddingVertical: 14,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    alignItems: 'center',
-  },
-  addBtnText: {
-    fontFamily: font.regular,
-    fontSize: fontSize.md,
-    color: colors.textPrimary,
-  },
-
-  inlineNicknameInput: {
-    fontFamily: font.regular,
-    fontSize: fontSize.xs,
-    color: colors.textSecondary,
-    padding: 0,
-    borderBottomWidth: 0.5,
-    borderBottomColor: colors.border,
-    paddingBottom: 2,
-  },
-  inlineNicknameLabel: {
-    fontFamily: font.regular,
-    fontSize: fontSize.xs,
-    color: colors.textMuted,
-  },
-
-  // 별명 입력 모달
-  nicknameModalHint: {
-    fontFamily: font.regular,
-    fontSize: fontSize.xs,
-    color: colors.textSecondary,
-    lineHeight: 18,
-    paddingHorizontal: spacing.lg,
-    paddingBottom: 20,
-  },
-  nicknameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    paddingVertical: 14,
-    borderBottomWidth: 0.5,
-    borderBottomColor: colors.border,
-  },
-  nicknameRowInput: {
-    fontFamily: font.regular,
-    fontSize: 13,
-    color: colors.textPrimary,
-    flex: 1,
-    textAlign: 'right',
-    padding: 0,
-  },
-  nicknameSkipBtn: {
-    flex: 1,
-    paddingVertical: 14,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    alignItems: 'center',
-  },
-  nicknameSkipText: {
-    fontFamily: font.regular,
-    fontSize: 13,
-    color: colors.textMuted,
-  },
-  nicknameSaveBtn: {
-    flex: 2,
-    paddingVertical: 14,
-    borderRadius: radius.md,
-    backgroundColor: colors.textPrimary,
-    alignItems: 'center',
-  },
-  nicknameSaveText: {
-    fontFamily: font.medium,
-    fontSize: 13,
-    color: colors.bgBase,
-  },
+  container: { flex: 1, backgroundColor: colors.bgBase },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.05)' },
+  backBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
+  backIcon: { fontSize: 32, color: colors.textPrimary, fontWeight: '300' },
+  headerTitle: { fontFamily: font.bold, fontSize: 14, color: colors.textPrimary, letterSpacing: -0.5 },
+  content: { paddingHorizontal: 24, paddingTop: 32 },
+  sectionLabel: { fontFamily: font.bold, fontSize: 10, color: colors.textDisabled, letterSpacing: 1.5, marginBottom: 12, paddingLeft: 16 },
+  glassCard: { backgroundColor: 'rgba(255,255,255,0.02)', borderRadius: 24, borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)', overflow: 'hidden' },
+  infoRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20 },
+  infoLabel: { fontFamily: font.bold, fontSize: 12, color: colors.textMuted },
+  infoValue: { fontFamily: font.bold, fontSize: 12, color: colors.textPrimary },
+  nicknameInput: { fontFamily: font.bold, fontSize: 12, color: colors.textPrimary, flex: 1, textAlign: 'right', padding: 0 },
+  divider: { height: 1, backgroundColor: 'rgba(255,255,255,0.03)' },
+  inputRow: { flexDirection: 'row', alignItems: 'center', padding: 20 },
+  inputTitle: { fontFamily: font.bold, fontSize: 12, color: colors.textPrimary },
+  inputSub: { fontFamily: font.regular, fontSize: 9, color: colors.textMuted, marginTop: 4 },
+  glassInputBox: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  glassInput: { backgroundColor: 'rgba(255,255,255,0.03)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8, width: 64, color: '#fff', fontFamily: font.bold, fontSize: 14, textAlign: 'right' },
+  unit: { fontFamily: font.bold, fontSize: 12, color: colors.textMuted },
+  summaryBox: { backgroundColor: 'rgba(249, 115, 22, 0.03)', borderRadius: 24, padding: 24, alignItems: 'center', marginTop: 12, marginBottom: 32, borderWidth: 1, borderColor: 'rgba(249, 115, 22, 0.1)' },
+  summaryLabel: { fontFamily: font.bold, fontSize: 9, color: colors.accent, letterSpacing: 1.5, marginBottom: 12 },
+  summaryValue: { fontFamily: font.bold, fontSize: 42, color: colors.textPrimary, marginBottom: 8, letterSpacing: -1 },
+  summarySub: { fontFamily: font.regular, fontSize: 10, color: colors.textDisabled },
+  badgeBtn: { backgroundColor: 'rgba(255,255,255,0.05)', paddingHorizontal: 14, paddingVertical: 6, borderRadius: 100 },
+  badgeBtnActive: { backgroundColor: 'rgba(16, 185, 129, 0.1)' },
+  badgeText: { fontFamily: font.bold, fontSize: 9, color: colors.textMuted },
+  badgeTextActive: { color: colors.profit },
+  arrow: { fontSize: 18, color: colors.textDisabled, fontWeight: '300' },
+  saveBtn: { backgroundColor: colors.textPrimary, borderRadius: 24, paddingVertical: 18, alignItems: 'center', marginTop: 40 },
+  saveBtnText: { fontFamily: font.bold, fontSize: 13, color: colors.bgBase },
+  modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 20, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.05)' },
+  modalTitle: { fontFamily: font.bold, fontSize: 14, color: colors.textPrimary, letterSpacing: -0.5 },
+  modalClose: { fontFamily: font.bold, fontSize: 13, color: colors.accent },
+  modalContent: { padding: 24 },
+  emptyText: { fontFamily: font.regular, fontSize: 12, color: colors.textDisabled, textAlign: 'center', paddingVertical: 40 },
+  sensorRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 10, gap: 10 },
+  sensorIcon: { width: 32, height: 32, backgroundColor: '#0a0a0a', borderRadius: 8, alignItems: 'center', justifyContent: 'center', position: 'relative', borderWidth: 1, borderColor: '#1a1a1a' },
+  liveDot: { position: 'absolute', top: -2, right: -2, width: 6, height: 6, backgroundColor: colors.profit, borderRadius: 3, shadowColor: colors.profit, shadowOpacity: 0.8, shadowRadius: 3 },
+  sensorName: { fontFamily: font.bold, fontSize: 12, color: colors.textPrimary },
+  sensorStatus: { fontFamily: font.bold, fontSize: 7, color: colors.profit, marginTop: 1, letterSpacing: 0.5 },
+  removeBtn: { padding: 6 },
+  removeIcon: { fontSize: 12, color: colors.textDisabled },
+  reBtn: { backgroundColor: '#111', borderWidth: 1, borderColor: '#222', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 },
+  reBtnText: { fontFamily: font.bold, fontSize: 10, color: colors.accent },
+  addBtn: { width: '100%', paddingVertical: 18, borderStyle: 'dashed', borderWidth: 1, borderColor: '#222', borderRadius: 24, alignItems: 'center', marginTop: 24 },
+  addBtnText: { fontFamily: font.bold, fontSize: 10, color: colors.textDisabled, letterSpacing: 1 },
+  nameInputRow: { flexDirection: 'row', alignItems: 'center', borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.05)', paddingVertical: 14 },
+  nameInput: { fontFamily: font.bold, fontSize: 13, color: colors.textPrimary, flex: 1, textAlign: 'right' },
+  nameSaveBtn: { backgroundColor: colors.accent, borderRadius: 20, paddingVertical: 18, alignItems: 'center', marginTop: 32 },
+  nameSaveText: { fontFamily: font.bold, fontSize: 13, color: '#fff' },
+  modalHint: { fontFamily: font.regular, fontSize: 12, color: colors.textSecondary, marginBottom: 20 },
 });

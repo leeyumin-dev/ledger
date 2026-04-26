@@ -12,7 +12,7 @@ export function AppHeader() {
       <View style={styles.logoWrap}>
         <Text style={styles.logo}>Ledger</Text>
       </View>
-      <TouchableOpacity style={styles.avatar} onPress={() => router.push('/profile')}>
+      <TouchableOpacity style={styles.avatar} onPress={() => router.push('/settings')}>
         <Ionicons name="person-circle-outline" size={28} color={colors.textSecondary} />
       </TouchableOpacity>
     </View>
