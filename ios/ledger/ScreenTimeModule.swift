@@ -464,11 +464,7 @@ class ScreenTimeModule: NSObject {
             resolve("[]"); return
         }
 
-        let nameMap = loadNameMap()
-
-        let result = map.map { tokenKey, mins -> [String: Any] in
-            // 토큰 키를 사용자 입력 이름으로 변환 (없으면 토큰 키 그대로)
-            let displayName = nameMap[tokenKey] ?? tokenKey
+        let result = map.map { displayName, mins -> [String: Any] in
             return ["app_name": displayName, "bundle_id": "", "duration_minutes": mins]
         }
         if let encoded = try? JSONSerialization.data(withJSONObject: result),

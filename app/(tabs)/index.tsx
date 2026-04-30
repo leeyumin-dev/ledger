@@ -85,7 +85,7 @@ export default function TodayScreen() {
 
         const yesterdayObj = new Date(dateObj);
         yesterdayObj.setDate(yesterdayObj.getDate() - 1);
-        const yesterdayStr = yesterdayObj.toISOString().split('T')[0];
+        const yesterdayStr = toLocalDateStr(yesterdayObj);
 
         const [settingsRes, usageRes, prevUsageRes, categoryRes] = await Promise.all([
             supabase.from('user_settings').select('sleep_hours, work_hours').eq('user_id', user.id).single(),

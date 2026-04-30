@@ -200,24 +200,26 @@ export default function CategorySettingsScreen() {
                                     {(item.category === '소비' || item.category === '투자') && (
                                         <View style={styles.settingsArea}>
                                             {item.category === '소비' && (
-                                                <View style={{ marginBottom: 12 }}>
-                                                    <Text style={styles.settingLabel}>하루 예산</Text>
-                                                    <View style={styles.presetRow}>
-                                                        {PRESET_BUDGETS.map(min => (
+                                                <>
+                                                    <View style={styles.settingRow}>
+                                                        <Text style={styles.settingLabel}>하루 예산</Text>
+                                                        <View style={styles.presetRow}>
+                                                            {PRESET_BUDGETS.map(min => (
+                                                                <TouchableOpacity
+                                                                    key={min}
+                                                                    style={[styles.presetBtn, item.budget_minutes === min && !customSetIds.includes(item.id) && styles.presetBtnActive]}
+                                                                    onPress={() => { setCustomInputId(null); setCustomSetIds(prev => prev.filter(x => x !== item.id)); updateBudget(item.id, min); }}
+                                                                >
+                                                                    <Text style={[styles.presetText, item.budget_minutes === min && !customSetIds.includes(item.id) && styles.presetTextActive]}>{min >= 60 ? `${min/60}h` : `${min}m`}</Text>
+                                                                </TouchableOpacity>
+                                                            ))}
                                                             <TouchableOpacity
-                                                                key={min}
-                                                                style={[styles.presetBtn, item.budget_minutes === min && !customSetIds.includes(item.id) && styles.presetBtnActive]}
-                                                                onPress={() => { setCustomInputId(null); setCustomSetIds(prev => prev.filter(x => x !== item.id)); updateBudget(item.id, min); }}
+                                                                style={[styles.presetBtn, (customInputId === item.id || customSetIds.includes(item.id)) && styles.presetBtnActive]}
+                                                                onPress={() => { setGoalInputId(null); setCustomInputId(item.id); setCustomInputVal(customSetIds.includes(item.id) ? String(item.budget_minutes) : ''); }}
                                                             >
-                                                                <Text style={[styles.presetText, item.budget_minutes === min && !customSetIds.includes(item.id) && styles.presetTextActive]}>{min >= 60 ? `${min/60}h` : `${min}m`}</Text>
+                                                                <Text style={[styles.presetText, (customInputId === item.id || customSetIds.includes(item.id)) && styles.presetTextActive]}>직접</Text>
                                                             </TouchableOpacity>
-                                                        ))}
-                                                        <TouchableOpacity 
-                                                            style={[styles.presetBtn, (customInputId === item.id || customSetIds.includes(item.id)) && styles.presetBtnActive]}
-                                                            onPress={() => { setGoalInputId(null); setCustomInputId(item.id); setCustomInputVal(customSetIds.includes(item.id) ? String(item.budget_minutes) : ''); }}
-                                                        >
-                                                            <Text style={[styles.presetText, (customInputId === item.id || customSetIds.includes(item.id)) && styles.presetTextActive]}>직접</Text>
-                                                        </TouchableOpacity>
+                                                        </View>
                                                     </View>
                                                     {customInputId === item.id && (
                                                         <View style={styles.customRow}>
@@ -226,27 +228,29 @@ export default function CategorySettingsScreen() {
                                                             <TouchableOpacity onPress={() => setCustomInputId(null)}><Text style={styles.cancelText}>취소</Text></TouchableOpacity>
                                                         </View>
                                                     )}
-                                                </View>
+                                                </>
                                             )}
 
-                                            <View>
-                                                <Text style={[styles.settingLabel, { color: item.category === '투자' ? colors.profit : colors.loss }]}>{item.category === '투자' ? '주간 목표' : '주간 한도'}</Text>
-                                                <View style={styles.presetRow}>
-                                                    {(item.category === '투자' ? PRESET_GOALS : PRESET_LIMITS).map(min => (
+                                            <>
+                                                <View style={styles.settingRow}>
+                                                    <Text style={[styles.settingLabel, { color: item.category === '투자' ? colors.profit : colors.loss }]}>{item.category === '투자' ? '주간 목표' : '주간 한도'}</Text>
+                                                    <View style={styles.presetRow}>
+                                                        {(item.category === '투자' ? PRESET_GOALS : PRESET_LIMITS).map(min => (
+                                                            <TouchableOpacity
+                                                                key={min}
+                                                                style={[styles.presetBtn, item.goal_minutes === min && !goalCustomSetIds.includes(item.id) && styles.presetBtnActive]}
+                                                                onPress={() => { setGoalInputId(null); setGoalCustomSetIds(prev => prev.filter(x => x !== item.id)); updateGoal(item.id, min); }}
+                                                            >
+                                                                <Text style={[styles.presetText, item.goal_minutes === min && !goalCustomSetIds.includes(item.id) && styles.presetTextActive]}>{min/60}h</Text>
+                                                            </TouchableOpacity>
+                                                        ))}
                                                         <TouchableOpacity
-                                                            key={min}
-                                                            style={[styles.presetBtn, item.goal_minutes === min && !goalCustomSetIds.includes(item.id) && styles.presetBtnActive]}
-                                                            onPress={() => { setGoalInputId(null); setGoalCustomSetIds(prev => prev.filter(x => x !== item.id)); updateGoal(item.id, min); }}
+                                                            style={[styles.presetBtn, (goalInputId === item.id || goalCustomSetIds.includes(item.id)) && styles.presetBtnActive]}
+                                                            onPress={() => { setCustomInputId(null); setGoalInputId(item.id); setGoalInputVal(goalCustomSetIds.includes(item.id) ? String(item.goal_minutes) : ''); }}
                                                         >
-                                                            <Text style={[styles.presetText, item.goal_minutes === min && !goalCustomSetIds.includes(item.id) && styles.presetTextActive]}>{min/60}h</Text>
+                                                            <Text style={[styles.presetText, (goalInputId === item.id || goalCustomSetIds.includes(item.id)) && styles.presetTextActive]}>직접</Text>
                                                         </TouchableOpacity>
-                                                    ))}
-                                                    <TouchableOpacity 
-                                                        style={[styles.presetBtn, (goalInputId === item.id || goalCustomSetIds.includes(item.id)) && styles.presetBtnActive]}
-                                                        onPress={() => { setCustomInputId(null); setGoalInputId(item.id); setGoalInputVal(goalCustomSetIds.includes(item.id) ? String(item.goal_minutes) : ''); }}
-                                                    >
-                                                        <Text style={[styles.presetText, (goalInputId === item.id || goalCustomSetIds.includes(item.id)) && styles.presetTextActive]}>직접</Text>
-                                                    </TouchableOpacity>
+                                                    </View>
                                                 </View>
                                                 {goalInputId === item.id && (
                                                     <View style={styles.customRow}>
@@ -255,7 +259,7 @@ export default function CategorySettingsScreen() {
                                                         <TouchableOpacity onPress={() => setGoalInputId(null)}><Text style={styles.cancelText}>취소</Text></TouchableOpacity>
                                                     </View>
                                                 )}
-                                            </View>
+                                            </>
                                         </View>
                                     )}
                                 </View>
@@ -288,10 +292,11 @@ const styles = StyleSheet.create({
     catBtnActive: { backgroundColor: colors.accent, borderColor: colors.accent },
     catBtnText: { fontFamily: font.bold, fontSize: 9, color: colors.textDisabled },
     catBtnTextActive: { color: '#fff' },
-    settingsArea: { marginTop: 4, paddingTop: 12, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.03)' },
-    settingLabel: { fontFamily: font.bold, fontSize: 8, color: colors.textDisabled, letterSpacing: 0.5, marginBottom: 8, textTransform: 'uppercase' },
-    presetRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap', justifyContent: 'space-between' },
-    presetBtn: { flex: 1, minWidth: '18%', paddingVertical: 8, borderRadius: 8, borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)', alignItems: 'center' },
+    settingsArea: { marginTop: 4, paddingTop: 10, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.03)', gap: 8 },
+    settingRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+    settingLabel: { fontFamily: font.bold, fontSize: 8, color: colors.textDisabled, letterSpacing: 0.5, textTransform: 'uppercase', width: 44 },
+    presetRow: { flex: 1, flexDirection: 'row', gap: 5 },
+    presetBtn: { flex: 1, paddingVertical: 6, borderRadius: 7, borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)', alignItems: 'center' },
     presetBtnActive: { borderColor: colors.accent, backgroundColor: 'rgba(249, 115, 22, 0.05)' },
     presetText: { fontFamily: font.bold, fontSize: 9, color: colors.textDisabled },
     presetTextActive: { color: colors.accent },

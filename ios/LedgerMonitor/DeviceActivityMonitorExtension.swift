@@ -60,6 +60,14 @@ class DeviceActivityMonitorExtension: DeviceActivityMonitor {
         // ledger_app_map 키: 앱 토큰 → "0","1"..., 카테고리 → "cat_0","cat_1"...
         let lookupKey = prefix == "idx" ? String(idx) : "cat_\(idx)"
 
+        // carry-over 방지: 자정 이후 경과 시간보다 큰 임계값은 전날에서 이월된 이벤트이므로 무시
+        let midnight = Calendar.current.startOfDay(for: Date())
+        let minutesSinceMidnight = Int(Date().timeIntervalSince(midnight) / 60)
+        guard tMins <= minutesSinceMidnight + 10 else {
+            logger.info("t\(tMins) skipped (carry-over: 자정 후 \(minutesSinceMidnight)분 경과)")
+            return
+        }
+
         let today = currentDateString()
 
         guard let mapJson = defaults?.string(forKey: "ledger_app_map"),
